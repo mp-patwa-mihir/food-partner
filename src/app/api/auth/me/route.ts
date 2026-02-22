@@ -38,6 +38,7 @@ export async function GET(req: Request) {
         role:       user.role,
         isApproved: user.isApproved,
       },
+      token: token,
     });
   } catch {
     return NextResponse.json({ success: false, message: "Service unavailable" }, { status: 503 });

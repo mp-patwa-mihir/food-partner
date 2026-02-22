@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
+import { useSocket } from "@/context/SocketContext";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 
 import {
   Card,
@@ -53,6 +55,7 @@ interface Order {
 
 export default function OrdersPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
+  const { socket, isConnected } = useSocket();
   const router = useRouter();
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -95,6 +98,41 @@ export default function OrdersPage() {
       fetchOrders(page);
     }
   }, [user, page]);
+
+  // Handle Real-time Socket Updates
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    const handleOrderStatusUpdate = (payload: any) => {
+      setOrders((prev) => {
+        // Only react if the updated order exists in the current view
+        const orderExists = prev.some((o) => o._id === payload.orderId);
+        if (!orderExists) return prev;
+
+        toast.info(
+          <div className="flex flex-col gap-1">
+            <span className="font-bold">🔔 Order Status Updated!</span>
+            <span className="text-sm">
+              Order <span className="font-mono bg-muted px-1 rounded">#{payload.orderId.slice(-6).toUpperCase()}</span> is now <span className="font-bold text-primary">{payload.status.replace(/_/g, " ")}</span>.
+            </span>
+          </div>,
+          { duration: 6000 }
+        );
+
+        return prev.map((o) =>
+          o._id === payload.orderId
+            ? { ...o, status: payload.status, updatedAt: payload.updatedAt }
+            : o
+        );
+      });
+    };
+
+    socket.on("order_status_update", handleOrderStatusUpdate);
+
+    return () => {
+      socket.off("order_status_update", handleOrderStatusUpdate);
+    };
+  }, [socket, isConnected]);
 
   const handleCancelOrder = async (orderId: string) => {
     try {
@@ -180,9 +218,16 @@ export default function OrdersPage() {
                       <p className="text-sm text-muted-foreground hidden sm:block">Total</p>
                       <p className="font-bold text-lg">${order.totalAmount.toFixed(2)}</p>
                     </div>
-                    <Badge variant={getStatusBadgeVariant(order.status)} className="px-3 py-1 uppercase text-[10px] tracking-wider font-bold">
-                      {order.status.replace(/_/g, " ")}
-                    </Badge>
+                    <motion.div
+                      key={order.status} // Re-animate every time status changes
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    >
+                      <Badge variant={getStatusBadgeVariant(order.status)} className="px-3 py-1 uppercase text-[10px] tracking-wider font-bold shadow-sm">
+                        {order.status.replace(/_/g, " ")}
+                      </Badge>
+                    </motion.div>
                   </div>
                 </div>
               </CardHeader>

@@ -13,6 +13,7 @@ import {
   Menu,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { SocketIndicator } from "@/components/shared/SocketIndicator";
 
 const sidebarLinks = [
   { name: "Dashboard", href: "/provider", icon: LayoutDashboard },
@@ -75,6 +76,9 @@ export default function ProviderLayout({
             <p className="text-xs text-zinc-500 truncate">Provider Account</p>
           </div>
         </div>
+        <div className="px-3 mb-4">
+          <SocketIndicator />
+        </div>
         <Button
           variant="outline"
           className="w-full justify-start text-zinc-600 group"
@@ -102,16 +106,19 @@ export default function ProviderLayout({
           <span className="text-xl">🍳</span>
           <span className="font-bold">FoodPartner</span>
         </div>
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <Menu className="w-5 h-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72">
-            <SidebarContent />
-          </SheetContent>
-        </Sheet>
+        <div className="flex items-center gap-2">
+          <SocketIndicator />
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <Menu className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 w-72">
+              <SidebarContent />
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
 
       {/* Main Content Area */}

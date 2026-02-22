@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { Menu, ShoppingCart } from "lucide-react";
 import { useCart } from "@/context/CartContext";
+import { SocketIndicator } from "./SocketIndicator";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -88,7 +89,9 @@ export function PublicNavbar() {
         {/* Desktop Auth Buttons & Cart */}
         <div className="hidden md:flex items-center gap-4">
           {mounted && (
-            <Button
+            <>
+              <SocketIndicator />
+              <Button
               variant="ghost"
               size="icon"
               className="relative"
@@ -102,6 +105,7 @@ export function PublicNavbar() {
               )}
               <span className="sr-only">Open Cart</span>
             </Button>
+            </>
           )}
 
           <Button variant="ghost" asChild>

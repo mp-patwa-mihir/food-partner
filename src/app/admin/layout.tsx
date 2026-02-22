@@ -11,8 +11,10 @@ import {
   Menu,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { SocketIndicator } from "@/components/shared/SocketIndicator";
 
 const sidebarLinks = [
+  { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { name: "Restaurants", href: "/admin/restaurants", icon: Store },
 ];
 
@@ -38,7 +40,10 @@ export default function AdminLayout({
 
       <nav className="flex-1 space-y-1 p-4">
         {sidebarLinks.map((link) => {
-          const isActive = pathname.startsWith(link.href);
+          const isActive = 
+               link.href === "/admin" 
+                 ? pathname === "/admin" 
+                 : pathname.startsWith(link.href);
           const Icon = link.icon;
           return (
             <Link
@@ -69,6 +74,9 @@ export default function AdminLayout({
             <p className="text-xs text-slate-400 truncate">System Admin</p>
           </div>
         </div>
+        <div className="px-3 mb-4">
+          <SocketIndicator />
+        </div>
         <Button
           variant="outline"
           className="w-full justify-start text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white group"
@@ -96,16 +104,19 @@ export default function AdminLayout({
           <span className="text-xl">🛡️</span>
           <span className="font-bold">Admin Portal</span>
         </div>
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="text-slate-50">
-              <Menu className="w-5 h-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72 bg-slate-900 border-slate-800">
-            <SidebarContent />
-          </SheetContent>
-        </Sheet>
+        <div className="flex items-center gap-2">
+          <SocketIndicator />
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="text-slate-50">
+                <Menu className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 w-72 bg-slate-900 border-slate-800">
+              <SidebarContent />
+            </SheetContent>
+          </Sheet>
+        </div>
       </div>
 
       {/* Main Content Area */}

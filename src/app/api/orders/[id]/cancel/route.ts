@@ -56,6 +56,19 @@ export async function PATCH(
     order.status = "CANCELLED";
     await order.save(); // Model hook handles the timestamp update automatically
 
+    // Emit Socket events if socket server is initialized
+    if ((global as any).io) {
+      const io = (global as any).io;
+      const payload = {
+        orderId: order._id.toString(),
+        status: order.status,
+        updatedAt: order.updatedAt
+      };
+
+      io.to(`user:${order.user.toString()}`).emit("order_status_update", payload);
+      io.to("admin:global").emit("admin_order_update", payload);
+    }
+
     return NextResponse.json(
       { message: "Order cancelled successfully", order },
       { status: 200 }

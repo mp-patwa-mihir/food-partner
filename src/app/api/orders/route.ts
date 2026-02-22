@@ -135,6 +135,20 @@ export async function POST(req: Request) {
       session.endSession();
     }
 
+    // Emit Socket events if socket server is initialized
+    if ((global as any).io) {
+      const io = (global as any).io;
+      const payload = {
+        orderId: savedOrder._id.toString(),
+        restaurantId: restaurant._id.toString(),
+        totalAmount: savedOrder.totalAmount,
+        createdAt: savedOrder.createdAt
+      };
+
+      io.to(`provider:${restaurant._id.toString()}`).emit("new_order", payload);
+      io.to("admin:global").emit("admin_new_order", payload);
+    }
+
     return NextResponse.json(
       { message: "Order placed successfully", order: savedOrder },
       { status: 201 }

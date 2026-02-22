@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AuthProvider } from "@/context/AuthContext";
 import { CartProvider } from "@/context/CartContext";
+import { SocketProvider } from "@/context/SocketContext";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -32,10 +33,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
-          <CartProvider>
-            {children}
-            <CartDrawer />
-          </CartProvider>
+          <SocketProvider>
+            <CartProvider>
+              {children}
+              <CartDrawer />
+            </CartProvider>
+          </SocketProvider>
         </AuthProvider>
         <Toaster position="bottom-right" />
       </body>

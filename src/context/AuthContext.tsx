@@ -15,6 +15,7 @@ import type { AuthUser } from "@/types";
 
 interface AuthContextValue {
   user:     AuthUser | null;
+  token:    string | null;
   isLoading: boolean;
   login:    (credentials: LoginInput) => Promise<{ success: boolean; message: string }>;
   logout:   () => Promise<void>;
@@ -31,6 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Start as loading=true so we can hydrate user state before first render
   const [user, setUser]         = useState<AuthUser | null>(null);
+  const [token, setToken]       = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // ── Hydrate: fetch current session from server on mount ───────────────────
@@ -44,10 +46,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch("/api/auth/me", { credentials: "include" });
         if (!cancelled) {
           if (res.ok) {
-            const { data } = await res.json() as { data: AuthUser };
-            setUser(data);
+            const json = await res.json() as { data: AuthUser; token?: string };
+            setUser(json.data);
+            if (json.token) setToken(json.token);
           } else {
             setUser(null);
+            setToken(null);
           }
         }
       } catch {
@@ -73,10 +77,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           body:        JSON.stringify(credentials),
         });
 
-        const json = await res.json() as { success: boolean; message: string; data?: { user: AuthUser } };
+        const json = await res.json() as { success: boolean; message: string; data?: { user: AuthUser; token: string } };
 
         if (json.success && json.data?.user) {
           setUser(json.data.user);
+          setToken(json.data.token);
           // Navigate based on role
           const roleRedirect: Record<string, string> = {
             ADMIN:    "/admin",
@@ -107,13 +112,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     } finally {
       setUser(null);
+      setToken(null);
       setIsLoading(false);
       router.push("/login");
     }
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
