@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { Menu } from "lucide-react";
+import { Menu, ShoppingCart } from "lucide-react";
+import { useCart } from "@/context/CartContext";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +25,13 @@ const NAV_LINKS = [
 export function PublicNavbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { cart, setDrawerOpen } = useCart();
   const pathname = usePathname();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Detect scrolling to toggle sticky header styling with shadow/blur
   useEffect(() => {
@@ -78,8 +85,25 @@ export function PublicNavbar() {
           </nav>
         </div>
 
-        {/* Desktop Auth Buttons */}
+        {/* Desktop Auth Buttons & Cart */}
         <div className="hidden md:flex items-center gap-4">
+          {mounted && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative"
+              onClick={() => setDrawerOpen(true)}
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {cart && cart.items.length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                  {cart.items.reduce((acc, item) => acc + item.quantity, 0)}
+                </span>
+              )}
+              <span className="sr-only">Open Cart</span>
+            </Button>
+          )}
+
           <Button variant="ghost" asChild>
             <Link href="/login">Log in</Link>
           </Button>
