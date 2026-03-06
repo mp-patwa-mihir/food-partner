@@ -4,8 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext"; // To get user if available
 import { UserRole } from "@/constants/roles";
-import { IRestaurant } from "@/models/Restaurant";
-import { ICart } from "@/models/Cart";
+import { getErrorMessage } from "@/lib/utils";
 
 // Note: ICart interfaces from backend aren't easily imported directly due to server-only code (mongoose).
 // Let's define the local frontend types here for strict typing.
@@ -83,6 +82,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
       toast.error("Please login to add items to cart");
       return false;
     }
+
+    if (String(user.role) !== UserRole.CUSTOMER) {
+      toast.error("Only customer accounts can add items to the cart");
+      return false;
+    }
     
     // Check local conflict before calling API to be faster
     if (cart && cart.restaurant._id !== restaurantId && cart.items.length > 0) {
@@ -113,8 +117,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       toast.success("Item added to cart");
       setDrawerOpen(true); // Open drawer so they see it
       return true;
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to add item"));
       return false;
     }
   };
@@ -143,8 +147,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       
       // refresh strictly from db
       await fetchCart();
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to update quantity"));
       await fetchCart(); // Revert on failure
     }
   };
@@ -159,8 +163,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       
       toast.success("Item removed");
       await fetchCart();
-    } catch (err: any) {
-      toast.error(err.message);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to remove item"));
     }
   };
 
@@ -192,7 +196,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         setWarningModalOpen(false);
         setPendingItem(null);
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to switch restaurant");
     }
   };

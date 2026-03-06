@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -40,6 +40,15 @@ const restaurantFormSchema = z.object({
 
 type RestaurantFormValues = z.infer<typeof restaurantFormSchema>;
 
+type ProviderRestaurant = RestaurantFormValues & {
+  _id: string;
+  isApproved: boolean;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "An unexpected error occurred.";
+}
+
 export default function RestaurantProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,40 +71,47 @@ export default function RestaurantProfilePage() {
     },
   });
 
-  // Fetch existing restaurant data on mount
-  useEffect(() => {
-    async function loadRestaurantData() {
-      try {
-        const response = await fetch("/api/provider/restaurant");
-        if (response.ok) {
-          const data = await response.json();
-          if (data.restaurant) {
-            setHasExistingRestaurant(true);
-            setIsApproved(data.restaurant.isApproved);
-            
-            // Populate form with existing data
-            form.reset({
-              name: data.restaurant.name || "",
-              description: data.restaurant.description || "",
-              address: data.restaurant.address || "",
-              city: data.restaurant.city || "",
-              state: data.restaurant.state || "",
-              pincode: data.restaurant.pincode || "",
-              logo: data.restaurant.logo || "",
-              coverImage: data.restaurant.coverImage || "",
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch restaurant:", error);
-        setGeneralError("Failed to load restaurant profile. Please refresh.");
-      } finally {
-        setIsLoading(false);
-      }
-    }
+  const loadRestaurantData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/provider/restaurant");
+      const data = (await response.json()) as {
+        error?: string;
+        restaurant: ProviderRestaurant | null;
+      };
 
-    loadRestaurantData();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to load restaurant profile.");
+      }
+
+      if (data.restaurant) {
+        setHasExistingRestaurant(true);
+        setIsApproved(data.restaurant.isApproved);
+        form.reset({
+          name: data.restaurant.name || "",
+          description: data.restaurant.description || "",
+          address: data.restaurant.address || "",
+          city: data.restaurant.city || "",
+          state: data.restaurant.state || "",
+          pincode: data.restaurant.pincode || "",
+          logo: data.restaurant.logo || "",
+          coverImage: data.restaurant.coverImage || "",
+        });
+      } else {
+        setHasExistingRestaurant(false);
+        setIsApproved(false);
+      }
+    } catch (error: unknown) {
+      console.error("Failed to fetch restaurant:", error);
+      setGeneralError(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
   }, [form]);
+
+  useEffect(() => {
+    void loadRestaurantData();
+  }, [loadRestaurantData]);
 
   async function onSubmit(data: RestaurantFormValues) {
     setIsSubmitting(true);
@@ -103,32 +119,30 @@ export default function RestaurantProfilePage() {
     setSuccessMessage("");
 
     try {
-      // If they already have a restaurant, this form could become a PATCH route later.
-      // For now, our backend MVP supports POST to create. 
-      // We will prevent POSTing if hasExistingRestaurant is true.
-      if (hasExistingRestaurant) {
-         setGeneralError("Updates are currently restricted. Contact support.");
-         setIsSubmitting(false);
-         return;
-      }
-
       const response = await fetch("/api/provider/restaurant", {
-        method: "POST",
+        method: hasExistingRestaurant ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
 
-      const result = await response.json();
+      const result = (await response.json()) as {
+        error?: string;
+        restaurant?: ProviderRestaurant;
+      };
 
       if (!response.ok) {
         throw new Error(result.error || "Failed to submit profile.");
       }
 
-      setSuccessMessage("Restaurant profile created! Awaiting admin approval.");
+      setSuccessMessage(
+        hasExistingRestaurant
+          ? "Restaurant profile updated successfully."
+          : "Restaurant profile created! Awaiting admin approval."
+      );
       setHasExistingRestaurant(true);
-      // isApproved is false by default on new creations
-    } catch (error: any) {
-      setGeneralError(error.message || "An unexpected error occurred.");
+      setIsApproved(result.restaurant?.isApproved ?? false);
+    } catch (error: unknown) {
+      setGeneralError(getErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -211,7 +225,7 @@ export default function RestaurantProfilePage() {
                     <FormItem className="col-span-1 md:col-span-2">
                       <FormLabel>Restaurant Name *</FormLabel>
                       <FormControl>
-                        <Input disabled={hasExistingRestaurant} placeholder="e.g. The Spicy Kitchen" {...field} />
+                        <Input disabled={isSubmitting} placeholder="e.g. The Spicy Kitchen" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -226,7 +240,7 @@ export default function RestaurantProfilePage() {
                       <FormLabel>Description</FormLabel>
                       <FormControl>
                         <Textarea
-                          disabled={hasExistingRestaurant}
+                          disabled={isSubmitting}
                           placeholder="Tell customers about your cuisine and specialties..."
                           className="resize-none h-24"
                           {...field}
@@ -244,7 +258,7 @@ export default function RestaurantProfilePage() {
                     <FormItem className="col-span-1 md:col-span-2">
                       <FormLabel>Street Address *</FormLabel>
                       <FormControl>
-                        <Input disabled={hasExistingRestaurant} placeholder="123 Food Street, Shop #4" {...field} />
+                        <Input disabled={isSubmitting} placeholder="123 Food Street, Shop #4" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -258,7 +272,7 @@ export default function RestaurantProfilePage() {
                     <FormItem>
                       <FormLabel>City *</FormLabel>
                       <FormControl>
-                        <Input disabled={hasExistingRestaurant} placeholder="Mumbai" {...field} />
+                        <Input disabled={isSubmitting} placeholder="Mumbai" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -272,7 +286,7 @@ export default function RestaurantProfilePage() {
                     <FormItem>
                       <FormLabel>State *</FormLabel>
                       <FormControl>
-                        <Input disabled={hasExistingRestaurant} placeholder="Maharashtra" {...field} />
+                        <Input disabled={isSubmitting} placeholder="Maharashtra" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -286,7 +300,7 @@ export default function RestaurantProfilePage() {
                     <FormItem>
                       <FormLabel>Pincode *</FormLabel>
                       <FormControl>
-                        <Input disabled={hasExistingRestaurant} placeholder="400001" {...field} />
+                        <Input disabled={isSubmitting} placeholder="400001" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -300,7 +314,7 @@ export default function RestaurantProfilePage() {
                     <FormItem>
                       <FormLabel>Logo Image URL</FormLabel>
                       <FormControl>
-                        <Input disabled={hasExistingRestaurant} placeholder="https://..." {...field} />
+                        <Input disabled={isSubmitting} placeholder="https://..." {...field} />
                       </FormControl>
                       <FormDescription>Optimal size: 500x500px</FormDescription>
                       <FormMessage />
@@ -315,7 +329,7 @@ export default function RestaurantProfilePage() {
                     <FormItem>
                       <FormLabel>Cover Image URL</FormLabel>
                       <FormControl>
-                        <Input disabled={hasExistingRestaurant} placeholder="https://..." {...field} />
+                        <Input disabled={isSubmitting} placeholder="https://..." {...field} />
                       </FormControl>
                       <FormDescription>Optimal size: 1200x400px</FormDescription>
                       <FormMessage />
@@ -324,14 +338,12 @@ export default function RestaurantProfilePage() {
                 />
               </div>
 
-              {!hasExistingRestaurant && (
-                <div className="flex justify-end pt-4">
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Submit for Approval
-                  </Button>
-                </div>
-              )}
+              <div className="flex justify-end pt-4">
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {hasExistingRestaurant ? "Save Changes" : "Submit for Approval"}
+                </Button>
+              </div>
             </form>
           </Form>
         </CardContent>

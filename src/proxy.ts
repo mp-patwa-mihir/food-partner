@@ -24,12 +24,24 @@ async function verifyJWT(token: string) {
 
 // ─── Route Config ─────────────────────────────────────────────────────────────
 
-const PROTECTED_PREFIXES = ["/admin", "/provider", "/dashboard"];
+const PROTECTED_PREFIXES = [
+  "/admin",
+  "/provider",
+  "/dashboard",
+  "/api/admin",
+  "/api/provider",
+  "/api/cart",
+  "/api/orders",
+];
 
 const ROLE_MAP: Record<string, UserRole[]> = {
-  "/admin":    [UserRole.ADMIN],
+  "/api/admin": [UserRole.ADMIN],
+  "/admin": [UserRole.ADMIN],
+  "/api/provider": [UserRole.PROVIDER],
   "/provider": [UserRole.PROVIDER],
-  "/dashboard":[UserRole.CUSTOMER],
+  "/api/cart": [UserRole.CUSTOMER],
+  "/api/orders": [UserRole.CUSTOMER],
+  "/dashboard": [UserRole.CUSTOMER],
 };
 
 const PUBLIC_PREFIXES = [
@@ -45,30 +57,48 @@ const PUBLIC_PREFIXES = [
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const isApiRoute = pathname.startsWith("/api/");
+  const isPublicRoute = PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  const isProtectedRoute = PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
-  // ① Public routes — always pass through (prevents redirect loops)
-  if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next();
-  }
-
-  // ② Unprotected routes — pass through
-  if (!PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next();
-  }
-
-  // ③ Read HttpOnly token cookie
   const token = request.cookies.get("token")?.value;
 
   if (!token) {
+    if (!isProtectedRoute || isPublicRoute) {
+      return NextResponse.next();
+    }
+
+    if (isApiRoute) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
+    loginUrl.searchParams.set(
+      "callbackUrl",
+      `${pathname}${request.nextUrl.search}`
+    );
     return NextResponse.redirect(loginUrl);
   }
 
-  // ④ Verify JWT using Web Crypto API (jose) — edge-compatible
+  // ① Verify JWT using Web Crypto API (jose) — edge-compatible
   const payload = await verifyJWT(token);
 
   if (!payload) {
+    if (!isProtectedRoute || isPublicRoute) {
+      const response = NextResponse.next();
+      response.cookies.delete("token");
+      return response;
+    }
+
+    if (isApiRoute) {
+      const response = NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+      response.cookies.delete("token");
+      return response;
+    }
+
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("error", "session_expired");
     const response = NextResponse.redirect(loginUrl);
@@ -76,16 +106,20 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  // ⑤ Role check
-  const allowed = Object.entries(ROLE_MAP).find(([prefix]) =>
-    pathname.startsWith(prefix)
-  )?.[1];
+  // ② Role check for protected app routes
+  const allowed = Object.entries(ROLE_MAP)
+    .sort(([left], [right]) => right.length - left.length)
+    .find(([prefix]) => pathname.startsWith(prefix))?.[1];
 
-  if (allowed && !allowed.includes(payload.role)) {
+  if (isProtectedRoute && allowed && !allowed.includes(payload.role)) {
+    if (isApiRoute) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     return NextResponse.redirect(new URL("/unauthorized", request.url));
   }
 
-  // ⑥ Pass user context via headers to Server Components
+  // ③ Pass user context via headers to both app routes and API handlers
   const headers = new Headers(request.headers);
   headers.set("x-user-id",   payload.userId);
   headers.set("x-user-role", payload.role);

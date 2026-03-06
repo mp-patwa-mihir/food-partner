@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -52,25 +53,39 @@ const createMenuItemSchema = z.object({
 
 type MenuItemFormValues = z.infer<typeof createMenuItemSchema>;
 
-type Category = { _id: string; name: string };
+type ProviderRestaurant = {
+  _id: string;
+  name: string;
+  isApproved: boolean;
+};
+
+type Category = {
+  _id: string;
+  name: string;
+  isActive: boolean;
+};
+
 type MenuItemType = {
   _id: string;
   name: string;
+  description?: string;
   price: number;
+  isVeg?: boolean;
   isAvailable: boolean;
-  category: string; // The category ID to map back
+  category: Category | string | null;
 };
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "An unexpected error occurred.";
+}
+
 export default function MenuManagementPage() {
+  const [restaurant, setRestaurant] = useState<ProviderRestaurant | null>(null);
   const [items, setItems] = useState<MenuItemType[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  
-  // Security Locks
-  const [hasRestaurant, setHasRestaurant] = useState(true);
-  const [isApproved, setIsApproved] = useState(false);
 
   const form = useForm<MenuItemFormValues>({
     resolver: zodResolver(createMenuItemSchema),
@@ -84,59 +99,51 @@ export default function MenuManagementPage() {
     },
   });
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  const fetchData = useCallback(async () => {
     try {
-      // 1. Fetch Restaurant Context & verify approval
-      const restResponse = await fetch("/api/provider/restaurant");
-      if (!restResponse.ok) {
-        if (restResponse.status === 404) setHasRestaurant(false);
-        throw new Error("Could not load restaurant context.");
-      }
-      
-      const restData = await restResponse.json();
-      if (!restData.restaurant) {
-        setHasRestaurant(false);
-        return;
+      setIsLoading(true);
+      setError("");
+
+      const response = await fetch("/api/provider/menu");
+      const result = (await response.json()) as {
+        error?: string;
+        restaurant: ProviderRestaurant | null;
+        categories: Category[];
+        menuItems: MenuItemType[];
+      };
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to load your menu catalog.");
       }
 
-      setHasRestaurant(true);
-      setIsApproved(restData.restaurant.isApproved);
-
-      // 2. Load Categories & Items from the public unified details route
-      const detailsResponse = await fetch(`/api/restaurants/${restData.restaurant._id}`);
-      if (detailsResponse.ok) {
-        const details = await detailsResponse.json();
-        
-        // Flatten the structured grouping back into pure arrays for the UI state
-        const fetchedCategories: Category[] = [];
-        const fetchedItems: MenuItemType[] = [];
-
-        details.categories.forEach((group: any) => {
-          fetchedCategories.push(group.category);
-          fetchedItems.push(...group.items);
-        });
-
-        setCategories(fetchedCategories);
-        setItems(fetchedItems);
-      }
-    } catch (err: any) {
-      console.error(err);
-      if (err.message !== "Could not load restaurant context.") {
-        setError("Failed to load your menu catalog.");
-      }
+      setRestaurant(result.restaurant);
+      setCategories(result.categories || []);
+      setItems(result.menuItems || []);
+    } catch (error: unknown) {
+      console.error(error);
+      setError(getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchData();
   }, []);
 
+  useEffect(() => {
+    void fetchData();
+  }, [fetchData]);
+
+  const activeCategories = useMemo(
+    () => categories.filter((category) => category.isActive),
+    [categories]
+  );
+
   async function onSubmit(data: MenuItemFormValues) {
-    if (!isApproved) {
+    if (!restaurant?.isApproved) {
       setError("Your restaurant must be approved by an admin before adding items.");
+      return;
+    }
+
+    if (activeCategories.length === 0) {
+      setError("Please create an active category before adding menu items.");
       return;
     }
 
@@ -147,24 +154,19 @@ export default function MenuManagementPage() {
       const response = await fetch("/api/provider/menu", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-           ...data,
-           // Zod coerce handled string->number.
-           // API uses false for non-veg if explicitly set, defaulting isVeg boolean natively via shadcn checkbox ideally, but select works too.
-        }),
+        body: JSON.stringify(data),
       });
 
-      const result = await response.json();
+      const result = (await response.json()) as { error?: string };
 
       if (!response.ok) {
         throw new Error(result.error || "Failed to create menu item.");
       }
 
-      // Add to table
-      setItems((prev) => [...prev, result.menuItem]);
       form.reset();
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
+      await fetchData();
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -178,7 +180,7 @@ export default function MenuManagementPage() {
     );
   }
 
-  if (!hasRestaurant) {
+  if (!restaurant) {
     return (
       <div className="max-w-4xl mx-auto mt-10">
         <Alert className="bg-amber-50 text-amber-800 border-amber-200">
@@ -201,7 +203,7 @@ export default function MenuManagementPage() {
         </div>
       </div>
 
-      {!isApproved && (
+      {!restaurant.isApproved && (
          <Alert className="bg-amber-50 text-amber-800 border-amber-200">
            <AlertCircle className="h-4 w-4 text-amber-600" />
            <AlertTitle className="font-semibold">Account Pending Approval</AlertTitle>
@@ -222,7 +224,7 @@ export default function MenuManagementPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* ADD ITEM FORM (Requires Approval && Categories) */}
         <div className="lg:col-span-1 space-y-6">
-          <Card className={!isApproved ? "opacity-60 pointer-events-none" : ""}>
+          <Card className={!restaurant.isApproved ? "opacity-60 pointer-events-none" : ""}>
             <CardHeader>
               <CardTitle>Add New Item</CardTitle>
               <CardDescription>
@@ -230,7 +232,7 @@ export default function MenuManagementPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {categories.length === 0 && isApproved ? (
+              {activeCategories.length === 0 && restaurant.isApproved ? (
                 <Alert className="bg-blue-50 text-blue-800 border-blue-200">
                   <AlertCircle className="h-4 w-4 text-blue-600" />
                   <AlertTitle>No Categories</AlertTitle>
@@ -261,14 +263,14 @@ export default function MenuManagementPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Category *</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select a category" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {categories.map((cat) => (
+                              {activeCategories.map((cat) => (
                                 <SelectItem key={cat._id} value={cat._id}>
                                   {cat.name}
                                 </SelectItem>
@@ -294,7 +296,13 @@ export default function MenuManagementPage() {
                                 step="0.01" 
                                 className="pl-9" 
                                 {...field} 
-                                onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                                onChange={(event) =>
+                                  field.onChange(
+                                    event.target.value === ""
+                                      ? 0
+                                      : parseFloat(event.target.value)
+                                  )
+                                }
                               />
                             </div>
                           </FormControl>
@@ -335,7 +343,37 @@ export default function MenuManagementPage() {
                       )}
                     />
 
-                    <Button type="submit" className="w-full" disabled={isSubmitting || !isApproved}>
+                    <FormField
+                      control={form.control}
+                      name="isVeg"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Food Type</FormLabel>
+                          <Select
+                            onValueChange={(value) => field.onChange(value === "true")}
+                            value={String(field.value)}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select food type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="true">Vegetarian</SelectItem>
+                              <SelectItem value="false">Non-vegetarian</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>Shown to customers on the menu.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={isSubmitting || !restaurant.isApproved || activeCategories.length === 0}
+                    >
                       {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                       Add Menu Item
                     </Button>
@@ -358,7 +396,7 @@ export default function MenuManagementPage() {
             <CardContent>
               {items.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground border rounded-lg border-dashed">
-                  No menu items found. {isApproved ? "Start by adding one on the left!" : "Await admin approval to begin."}
+                  No menu items found. {restaurant.isApproved ? "Start by adding one on the left!" : "Await admin approval to begin."}
                 </div>
               ) : (
                 <div className="rounded-md border overflow-hidden">
@@ -369,18 +407,30 @@ export default function MenuManagementPage() {
                         <TableHead>Category</TableHead>
                         <TableHead>Price</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Type</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {items.map((item) => {
-                        const catName = categories.find(c => c._id === item.category)?.name || "Unknown";
+                        const itemCategory =
+                          typeof item.category === "string"
+                            ? categories.find((category) => category._id === item.category) ?? null
+                            : item.category;
+                        const catName = itemCategory?.name || "Unknown";
                         
                         return (
                           <TableRow key={item._id}>
                             <TableCell className="font-medium">{item.name}</TableCell>
-                            <TableCell className="text-muted-foreground">{catName}</TableCell>
-                            <TableCell>₹{item.price}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              <div className="space-y-1">
+                                <div>{catName}</div>
+                                {itemCategory && !itemCategory.isActive ? (
+                                  <span className="text-xs text-amber-600">Archived category</span>
+                                ) : null}
+                              </div>
+                            </TableCell>
+                            <TableCell>₹{item.price.toFixed(2)}</TableCell>
                             <TableCell>
                               <span
                                 className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
@@ -392,10 +442,11 @@ export default function MenuManagementPage() {
                                 {item.isAvailable ? "In Stock" : "Sold Out"}
                               </span>
                             </TableCell>
+                            <TableCell>{item.isVeg ? "Veg" : "Non-veg"}</TableCell>
                             <TableCell className="text-right">
-                               <Button variant="outline" size="sm" className="h-8 text-xs" disabled>
-                                 Manage
-                               </Button>
+                              <Button asChild variant="outline" size="sm" className="h-8 text-xs">
+                                <Link href={`/provider/menu/${item._id}`}>Manage</Link>
+                              </Button>
                             </TableCell>
                           </TableRow>
                         );

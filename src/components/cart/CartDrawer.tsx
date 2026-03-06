@@ -6,7 +6,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetFooter,
 } from "@/components/ui/sheet";
 import {
   Dialog,
@@ -24,6 +23,8 @@ import { ShoppingCart, Minus, Plus, Trash2, ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import type { ApiResponse, CustomerOrder } from "@/types";
+import { formatCurrency, getErrorMessage } from "@/lib/utils";
 
 export function CartDrawer() {
   const {
@@ -32,6 +33,7 @@ export function CartDrawer() {
     setDrawerOpen,
     updateQuantity,
     removeItem,
+    fetchCart,
     warningModalOpen,
     setWarningModalOpen,
     confirmSwitchRestaurant,
@@ -49,6 +51,11 @@ export function CartDrawer() {
       return;
     }
 
+    if (!/^\d{6}$/.test(address.pincode.trim())) {
+      toast.error("Please enter a valid 6-digit pincode.");
+      return;
+    }
+
     try {
       setIsPlacingOrder(true);
       const res = await fetch("/api/orders", {
@@ -57,12 +64,14 @@ export function CartDrawer() {
         body: JSON.stringify({ deliveryAddress: address }),
       });
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Failed to place order.");
+      const response = await res.json() as ApiResponse<{ order: CustomerOrder }>;
+
+      if (!res.ok || !response.success) {
+        throw new Error(response.message || "Failed to place order.");
       }
 
-      toast.success("Order placed successfully!");
+      toast.success(response.message);
+      await fetchCart();
       setDrawerOpen(false);
       setIsCheckingOut(false);
       setAddress({ street: "", city: "", pincode: "" });
@@ -70,8 +79,8 @@ export function CartDrawer() {
       // Needs to wait for cart context to empty itself (we can force a fetch)
       // fetchCart(); But the redirect handles it.
       router.push("/orders"); // Assuming customers have an orders page, or we can just go to /
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to place order."));
     } finally {
       setIsPlacingOrder(false);
     }
@@ -96,9 +105,14 @@ export function CartDrawer() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Your cart is empty</h3>
                 <p className="text-muted-foreground text-sm mb-6">
-                  Looks like you haven't added any food yet.
+                  Looks like you have not added any food yet.
                 </p>
-                <Button onClick={() => setDrawerOpen(false)}>
+                <Button
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    router.push("/restaurants");
+                  }}
+                >
                   Browse Restaurants
                 </Button>
               </div>
@@ -116,12 +130,12 @@ export function CartDrawer() {
                         <div className="flex-1">
                           <h4 className="font-medium text-sm">{item.name}</h4>
                           <p className="text-muted-foreground text-sm mt-1">
-                            ${item.price.toFixed(2)}
+                            {formatCurrency(item.price)}
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-2">
                           <p className="font-semibold">
-                            ${(item.price * item.quantity).toFixed(2)}
+                            {formatCurrency(item.price * item.quantity)}
                           </p>
                           <div className="flex items-center gap-2 rounded-md border p-1">
                             <button
@@ -177,7 +191,7 @@ export function CartDrawer() {
                             <Input
                               id="city"
                               required
-                              placeholder="New York"
+                              placeholder="Mumbai"
                               value={address.city}
                               onChange={(e) => setAddress({ ...address, city: e.target.value })}
                             />
@@ -187,7 +201,9 @@ export function CartDrawer() {
                             <Input
                               id="pincode"
                               required
-                              placeholder="10001"
+                              inputMode="numeric"
+                              maxLength={6}
+                              placeholder="400001"
                               value={address.pincode}
                               onChange={(e) => setAddress({ ...address, pincode: e.target.value })}
                             />
@@ -201,7 +217,7 @@ export function CartDrawer() {
                 <div className="border-t p-6 pb-8 bg-muted/30">
                   <div className="flex items-center justify-between mb-6">
                     <span className="font-semibold">Total</span>
-                    <span className="text-xl font-bold">${cart.totalAmount.toFixed(2)}</span>
+                    <span className="text-xl font-bold">{formatCurrency(cart.totalAmount)}</span>
                   </div>
 
                   {isCheckingOut ? (

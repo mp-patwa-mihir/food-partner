@@ -3,6 +3,7 @@ import { connectDB } from "@/lib/db";
 import Order, { OrderStatus } from "@/models/Order";
 import Restaurant from "@/models/Restaurant";
 import { UserRole } from "@/constants/roles";
+import { updateOrderStatusSchema } from "@/schemas/order.schema";
 import { headers } from "next/headers";
 
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
@@ -26,26 +27,31 @@ export async function PATCH(
 
     // Verify provider role
     if (!userId || userRole !== UserRole.PROVIDER) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
     }
 
     const { id: orderId } = await params;
     if (!orderId) {
       return NextResponse.json(
-        { error: "Order ID is required" },
+        { success: false, message: "Order ID is required" },
         { status: 400 }
       );
     }
 
     const body = await req.json();
-    const { status } = body;
-
-    if (!status) {
+    const parsed = updateOrderStatusSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "New status is required" },
-        { status: 400 }
+        {
+          success: false,
+          message: "Validation failed",
+          errors: parsed.error.flatten().fieldErrors,
+        },
+        { status: 422 }
       );
     }
+
+    const { status } = parsed.data;
 
     await connectDB();
 
@@ -53,7 +59,7 @@ export async function PATCH(
     const restaurant = await Restaurant.findOne({ owner: userId });
     if (!restaurant) {
       return NextResponse.json(
-        { error: "Restaurant not found for this provider" },
+        { success: false, message: "Restaurant not found for this provider" },
         { status: 404 }
       );
     }
@@ -61,13 +67,13 @@ export async function PATCH(
     // Fetch the order
     const order = await Order.findById(orderId);
     if (!order) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+      return NextResponse.json({ success: false, message: "Order not found" }, { status: 404 });
     }
 
     // Ensure order belongs to the provider's restaurant
     if (order.restaurant.toString() !== restaurant._id.toString()) {
       return NextResponse.json(
-        { error: "Order does not belong to your restaurant" },
+        { success: false, message: "Order does not belong to your restaurant" },
         { status: 403 }
       );
     }
@@ -80,7 +86,8 @@ export async function PATCH(
     if (!validNextStates.includes(requestedStatus)) {
       return NextResponse.json(
         {
-          error: `Invalid status transition from ${currentStatus} to ${requestedStatus}. Allowed transitions are: ${
+          success: false,
+          message: `Invalid status transition from ${currentStatus} to ${requestedStatus}. Allowed transitions are: ${
             validNextStates.length > 0 ? validNextStates.join(", ") : "None (Terminal State)"
           }`,
         },
@@ -106,13 +113,17 @@ export async function PATCH(
     }
 
     return NextResponse.json(
-      { message: "Order status updated successfully", order },
+      {
+        success: true,
+        message: "Order status updated successfully",
+        data: { order },
+      },
       { status: 200 }
     );
   } catch (error: any) {
     console.error("Provider Order Status PATCH Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   }

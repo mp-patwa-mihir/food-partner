@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { name, email, password } = parsed.data;
+  const { name, email, password, role } = parsed.data;
 
   // ── 2. Connect to DB ───────────────────────────────────────────────────────
   try {
@@ -57,12 +57,14 @@ export async function POST(req: NextRequest) {
   // an admin must explicitly approve them before they can operate.
   let user: InstanceType<typeof User>;
   try {
+    const isProvider = role === UserRole.PROVIDER;
+
     user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role:       UserRole.CUSTOMER, // safe default; role elevation done separately
-      isApproved: false,
+      role,
+      isApproved: !isProvider,
       isBlocked:  false,
     });
   } catch (err) {
@@ -77,16 +79,21 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(
     {
       success: true,
-      message: "Account created successfully",
+      message:
+        role === UserRole.PROVIDER
+          ? "Provider account created. Sign in to complete your restaurant profile. Admin approval is still required before going live."
+          : "Account created successfully. Please sign in to continue.",
       data: {
-        id:         user._id,
+        id:         String(user._id),
         name:       user.name,
         email:      user.email,
         role:       user.role,
         isApproved: user.isApproved,
-        createdAt:  user.createdAt,
+        requiresApproval: role === UserRole.PROVIDER,
+        createdAt:  user.createdAt.toISOString(),
       },
     },
     { status: 201 }
   );
 }
+

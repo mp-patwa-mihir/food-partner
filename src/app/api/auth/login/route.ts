@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { comparePassword } from "@/lib/password";
 import { generateToken } from "@/lib/auth";
-import User, { UserRole } from "@/models/User";
+import User from "@/models/User";
 import { loginSchema } from "@/schemas/auth.schema";
 
 export async function POST(req: NextRequest) {
@@ -73,22 +73,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── 6. PROVIDER approval check ─────────────────────────────────────────────
-  // Providers must be approved by an admin before they can log in
-  if (user.role === UserRole.PROVIDER && !user.isApproved) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: "Your provider account is pending admin approval.",
-      },
-      { status: 403 }
-    );
-  }
-
-  // ── 7. Generate JWT ────────────────────────────────────────────────────────
+  // ── 6. Generate JWT ────────────────────────────────────────────────────────
   const token = await generateToken(String(user._id), user.role);
 
-  // ── 8. Return token + safe user object ────────────────────────────────────
+  // ── 7. Return token + safe user object ────────────────────────────────────
   const response = NextResponse.json(
     {
       success: true,
@@ -96,7 +84,7 @@ export async function POST(req: NextRequest) {
       data: {
         token,
         user: {
-          id:         user._id,
+          id:         String(user._id),
           name:       user.name,
           email:      user.email,
           role:       user.role,

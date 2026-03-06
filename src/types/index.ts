@@ -1,25 +1,60 @@
+import type { OrderStatus as CanonicalOrderStatus } from "@/constants/orders";
+import type { UserRole } from "@/constants/roles";
+
 // ─── Global App Types ──────────────────────────────────────────────────────
 
-export type Role = "user" | "admin" | "partner";
+export type Role = UserRole;
+export type OrderStatus = CanonicalOrderStatus;
 
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
-  role: Role;
+  role: UserRole;
+  isApproved: boolean;
+  isBlocked?: boolean;
   avatar?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AuthSessionData {
+  user: AuthUser;
+  token: string;
+}
+
+export interface RegistrationData extends AuthUser {
+  requiresApproval: boolean;
 }
 
 // ─── API Response Wrapper ──────────────────────────────────────────────────
 
-export interface ApiResponse<T = unknown> {
-  success: boolean;
-  message: string;
-  data?: T;
-  errors?: Record<string, string[]>;
-}
+export type ApiFieldErrors = Record<string, string[] | undefined>;
+
+export type ApiResponse<T = unknown> =
+  | {
+      success: true;
+      message: string;
+      data: T;
+      errors?: ApiFieldErrors;
+    }
+  | {
+      success: false;
+      message: string;
+      data?: undefined;
+      errors?: ApiFieldErrors;
+    };
 
 // ─── Pagination ────────────────────────────────────────────────────────────
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  totalElements: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
 
 export interface PaginatedResponse<T> {
   data: T[];
@@ -59,4 +94,72 @@ export interface Restaurant {
 
 export interface CartItem extends FoodItem {
   quantity: number;
+}
+
+// ─── Orders ────────────────────────────────────────────────────────────────
+
+export interface DeliveryAddress {
+  street: string;
+  city: string;
+  pincode: string;
+}
+
+export interface OrderItem {
+  menuItemId: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+export interface OrderRestaurantSummary {
+  _id: string;
+  name: string;
+  logo?: string;
+  city: string;
+}
+
+export interface OrderCustomerSummary {
+  _id: string;
+  name: string;
+  email: string;
+}
+
+export interface CustomerOrder {
+  _id: string;
+  restaurant: OrderRestaurantSummary | null;
+  items: OrderItem[];
+  totalAmount: number;
+  status: OrderStatus;
+  deliveryAddress: DeliveryAddress;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderOrder {
+  _id: string;
+  user?: OrderCustomerSummary;
+  items: OrderItem[];
+  totalAmount: number;
+  status: OrderStatus;
+  deliveryAddress: DeliveryAddress;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrdersListData<TOrder> {
+  orders: TOrder[];
+  pagination: PaginationMeta;
+}
+
+export interface OrderStatusEvent {
+  orderId: string;
+  status: OrderStatus;
+  updatedAt: string;
+}
+
+export interface NewOrderEvent {
+  orderId: string;
+  restaurantId: string;
+  totalAmount: number;
+  createdAt: string;
 }

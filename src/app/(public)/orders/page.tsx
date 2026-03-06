@@ -7,6 +7,14 @@ import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import type {
+  ApiResponse,
+  CustomerOrder,
+  OrderStatus,
+  OrderStatusEvent,
+  OrdersListData,
+  PaginationMeta,
+} from "@/types";
 
 import {
   Card,
@@ -26,42 +34,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-
-interface OrderItem {
-  menuItemId: string;
-  name: string;
-  price: number;
-  quantity: number;
-}
-
-interface Order {
-  _id: string;
-  restaurant: {
-    _id: string;
-    name: string;
-    logo?: string;
-    city: string;
-  };
-  items: OrderItem[];
-  totalAmount: number;
-  status: string;
-  deliveryAddress: {
-    street: string;
-    city: string;
-    pincode: string;
-  };
-  createdAt: string;
-}
+import { formatCurrency, getErrorMessage } from "@/lib/utils";
 
 export default function OrdersPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const { socket, isConnected } = useSocket();
   const router = useRouter();
 
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    limit: 10,
+    totalElements: 0,
     hasNext: false,
     hasPrev: false,
     totalPages: 1,
@@ -82,12 +68,12 @@ export default function OrdersPage() {
     try {
       setIsLoading(true);
       const res = await fetch(`/api/orders/customer?page=${pageNum}&limit=10`);
-      if (!res.ok) throw new Error("Failed to fetch orders");
-      const data = await res.json();
-      setOrders(data.orders);
-      setPagination(data.pagination);
-    } catch (error: any) {
-      toast.error(error.message);
+      const data = await res.json() as ApiResponse<OrdersListData<CustomerOrder>>;
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to fetch orders");
+      setOrders(data.data.orders);
+      setPagination(data.data.pagination);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to fetch orders"));
     } finally {
       setIsLoading(false);
     }
@@ -103,7 +89,7 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    const handleOrderStatusUpdate = (payload: any) => {
+    const handleOrderStatusUpdate = (payload: OrderStatusEvent) => {
       setOrders((prev) => {
         // Only react if the updated order exists in the current view
         const orderExists = prev.some((o) => o._id === payload.orderId);
@@ -139,21 +125,21 @@ export default function OrdersPage() {
       const res = await fetch(`/api/orders/${orderId}/cancel`, {
         method: "PATCH",
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to cancel order");
+      const data = await res.json() as ApiResponse<{ order: CustomerOrder }>;
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Failed to cancel order");
       }
-      toast.success("Order cancelled safely.");
+      toast.success(data.message);
       // Optimistic update
       setOrders((prev) =>
         prev.map((o) => (o._id === orderId ? { ...o, status: "CANCELLED" } : o))
       );
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to cancel order"));
     }
   };
 
-  const getStatusBadgeVariant = (status: string) => {
+  const getStatusBadgeVariant = (status: OrderStatus) => {
     switch (status) {
       case "PENDING":
         return "secondary";
@@ -195,10 +181,10 @@ export default function OrdersPage() {
             No orders yet
           </h2>
           <p className="mb-6 max-w-sm">
-            You haven't placed any food orders. Discover amazing local
+            You have not placed any food orders. Discover amazing local
             restaurants and start eating!
           </p>
-          <Button onClick={() => router.push("/")}>Browse Restaurants</Button>
+          <Button onClick={() => router.push("/restaurants")}>Browse Restaurants</Button>
         </div>
       ) : (
         <div className="space-y-6">
@@ -216,7 +202,7 @@ export default function OrdersPage() {
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <p className="text-sm text-muted-foreground hidden sm:block">Total</p>
-                      <p className="font-bold text-lg">${order.totalAmount.toFixed(2)}</p>
+                      <p className="font-bold text-lg">{formatCurrency(order.totalAmount)}</p>
                     </div>
                     <motion.div
                       key={order.status} // Re-animate every time status changes
@@ -249,7 +235,7 @@ export default function OrdersPage() {
                               <span>{item.name}</span>
                             </div>
                             <span className="text-muted-foreground">
-                              ${(item.price * item.quantity).toFixed(2)}
+                              {formatCurrency(item.price * item.quantity)}
                             </span>
                           </div>
                         ))}

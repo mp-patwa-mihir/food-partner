@@ -1,42 +1,88 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { connectDB } from "@/lib/db";
-import Restaurant from "@/models/Restaurant";
 import MenuCategory from "@/models/MenuCategory";
 import MenuItem from "@/models/MenuItem";
-import { UserRole } from "@/constants/roles";
-import { headers } from "next/headers";
+import { getProviderContext } from "@/lib/provider-auth";
 
 const createMenuItemSchema = z.object({
   name: z.string().min(1, "Item name is required").trim(),
   description: z.string().optional(),
-  price: z.number().min(0, "Price cannot be negative"),
+  price: z.coerce.number().min(0, "Price cannot be negative"),
   image: z.string().url("Must be a valid image URL").optional().or(z.literal("")),
   isVeg: z.boolean().optional(),
   isAvailable: z.boolean().optional(),
   category: z.string().min(1, "Category ID is required"),
-  stock: z.number().min(0, "Stock cannot be negative").nullable().optional(),
+  stock: z.union([z.coerce.number().min(0, "Stock cannot be negative"), z.null()]).optional(),
 });
+
+export async function GET() {
+  try {
+    const context = await getProviderContext({ allowMissingRestaurant: true });
+    if ("errorResponse" in context) return context.errorResponse;
+
+    if (!context.restaurant) {
+      return NextResponse.json(
+        { restaurant: null, categories: [], menuItems: [] },
+        { status: 200 }
+      );
+    }
+
+    const restaurant = context.restaurant;
+
+    const [categories, menuItems] = await Promise.all([
+      MenuCategory.find({ restaurant: restaurant._id })
+        .sort({ isActive: -1, name: 1 })
+        .lean(),
+      MenuItem.find({ restaurant: restaurant._id })
+        .populate({
+          path: "category",
+          model: MenuCategory,
+          select: "_id name isActive",
+        })
+        .sort({ createdAt: -1, name: 1 })
+        .lean(),
+    ]);
+
+    return NextResponse.json(
+      {
+        restaurant,
+        categories,
+        menuItems,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Error fetching provider menu:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}
 
 export async function POST(req: Request) {
   try {
-    const requestHeaders = await headers();
-    const userId = requestHeaders.get("x-user-id");
-    const userRole = requestHeaders.get("x-user-role");
+    const context = await getProviderContext();
+    if ("errorResponse" in context) return context.errorResponse;
+    const restaurant = context.restaurant;
 
-    // 1. Verify User is Authenticated and is a PROVIDER
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!restaurant) {
+      return NextResponse.json(
+        { error: "Restaurant not found. Please create a restaurant first." },
+        { status: 404 }
+      );
     }
 
-    if (userRole !== UserRole.PROVIDER) {
+    if (!restaurant.isApproved) {
       return NextResponse.json(
-        { error: "Forbidden. Only registered providers can create menu items." },
+        {
+          error:
+            "Restaurant approval is still pending. Menu items can only be created after admin approval.",
+        },
         { status: 403 }
       );
     }
 
-    // 2. Parse and Validate Request Body First
     const body = await req.json();
     const parsed = createMenuItemSchema.safeParse(body);
 
@@ -49,19 +95,6 @@ export async function POST(req: Request) {
 
     const { category: categoryId, ...itemData } = parsed.data;
 
-    await connectDB();
-
-    // 3. Ensure the provider has a restaurant
-    const restaurant = await Restaurant.findOne({ owner: userId });
-    
-    if (!restaurant) {
-      return NextResponse.json(
-        { error: "You must create a restaurant before adding menu items." },
-        { status: 404 }
-      );
-    }
-
-    // 4. Ensure the Category exists and belongs to the *same* restaurant
     const category = await MenuCategory.findById(categoryId);
 
     if (!category) {
@@ -71,21 +104,25 @@ export async function POST(req: Request) {
       );
     }
 
-    if (category.restaurant.toString() !== restaurant._id.toString()) {
+    if (String(category.restaurant) !== String(restaurant._id)) {
       return NextResponse.json(
         { error: "Category mismatch. This category does not belong to your restaurant." },
-        { status: 403 } // Forbidden mapping attempt
+        { status: 403 }
       );
     }
 
-    // 5. Create the Menu Item
     const newMenuItem = await MenuItem.create({
       ...itemData,
       category: category._id,
       restaurant: restaurant._id,
-      // Fallback defaults in case they were omitted in the request
       isAvailable: itemData.isAvailable ?? true,
       stock: itemData.stock ?? null,
+    });
+
+    await newMenuItem.populate({
+      path: "category",
+      model: MenuCategory,
+      select: "_id name isActive",
     });
 
     return NextResponse.json(

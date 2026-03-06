@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -7,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LogoutButton } from "@/components/shared/LogoutButton";
 import type { UserRole } from "@/models/User";
 
 interface DashboardLayoutProps {
@@ -43,12 +43,7 @@ export function DashboardLayout({
             <span className="text-sm text-muted-foreground">
               {userName}
             </span>
-            {/* Logout is handled client-side via useAuth — placeholder button */}
-            <form action="/api/auth/logout" method="POST">
-              <Button variant="outline" size="sm" type="submit">
-                Logout
-              </Button>
-            </form>
+            <LogoutButton />
           </div>
         </div>
       </header>

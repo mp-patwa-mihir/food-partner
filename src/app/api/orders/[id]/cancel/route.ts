@@ -15,13 +15,13 @@ export async function PATCH(
 
     // Verify customer role
     if (!userId || userRole !== UserRole.CUSTOMER) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
     }
 
     const { id: orderId } = await params;
     if (!orderId) {
       return NextResponse.json(
-        { error: "Order ID is required" },
+        { success: false, message: "Order ID is required" },
         { status: 400 }
       );
     }
@@ -31,13 +31,13 @@ export async function PATCH(
     // Fetch the order
     const order = await Order.findById(orderId);
     if (!order) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+      return NextResponse.json({ success: false, message: "Order not found" }, { status: 404 });
     }
 
     // Ensure order belongs to customer
     if (order.user.toString() !== userId) {
       return NextResponse.json(
-        { error: "Unauthorized to cancel this order" },
+        { success: false, message: "Unauthorized to cancel this order" },
         { status: 403 }
       );
     }
@@ -46,7 +46,8 @@ export async function PATCH(
     if (order.status !== "PENDING") {
       return NextResponse.json(
         {
-          error: `Order cannot be cancelled because it is already in ${order.status} state. Cancellations are only permitted when the order is PENDING.`,
+          success: false,
+          message: `Order cannot be cancelled because it is already in ${order.status} state. Cancellations are only permitted when the order is PENDING.`,
         },
         { status: 400 } // Bad Request
       );
@@ -70,13 +71,17 @@ export async function PATCH(
     }
 
     return NextResponse.json(
-      { message: "Order cancelled successfully", order },
+      {
+        success: true,
+        message: "Order cancelled successfully",
+        data: { order },
+      },
       { status: 200 }
     );
   } catch (error: any) {
     console.error("Customer Order Cancel PATCH Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   }

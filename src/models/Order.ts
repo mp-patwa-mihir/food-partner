@@ -1,13 +1,7 @@
 import mongoose, { Document, Model, Schema } from "mongoose";
+import { ORDER_STATUSES, type OrderStatus } from "@/constants/orders";
 
-export type OrderStatus =
-  | "PENDING"
-  | "ACCEPTED"
-  | "REJECTED"
-  | "PREPARING"
-  | "OUT_FOR_DELIVERY"
-  | "DELIVERED"
-  | "CANCELLED";
+export type { OrderStatus } from "@/constants/orders";
 
 export interface IOrderItem {
   menuItemId: mongoose.Types.ObjectId;
@@ -49,15 +43,7 @@ const OrderSchema = new Schema<IOrder>(
     totalAmount: { type: Number, required: true },
     status: {
       type: String,
-      enum: [
-        "PENDING",
-        "ACCEPTED",
-        "REJECTED",
-        "PREPARING",
-        "OUT_FOR_DELIVERY",
-        "DELIVERED",
-        "CANCELLED",
-      ],
+      enum: ORDER_STATUSES,
       default: "PENDING",
     },
     deliveryAddress: {

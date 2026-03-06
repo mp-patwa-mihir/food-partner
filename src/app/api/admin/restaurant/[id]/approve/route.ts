@@ -1,70 +1,94 @@
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
+import { headers } from "next/headers";
 import { connectDB } from "@/lib/db";
 import Restaurant from "@/models/Restaurant";
+import User from "@/models/User";
 import { UserRole } from "@/constants/roles";
-import { headers } from "next/headers";
 
 export async function PATCH(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const requestHeaders = await headers();
     const userRole = requestHeaders.get("x-user-role");
 
-    // 1. Verify User is an ADMIN
     if (userRole !== UserRole.ADMIN) {
       return NextResponse.json(
-        { error: "Forbidden. Admin access required." },
+        { success: false, message: "Forbidden. Admin access required." },
         { status: 403 }
       );
     }
 
-    // 2. Resolve dynamic route params
-    const resolvedParams = await params;
-    const { id: restaurantId } = resolvedParams;
-
+    const { id: restaurantId } = await params;
     if (!restaurantId) {
       return NextResponse.json(
-        { error: "Restaurant ID is required." },
+        { success: false, message: "Restaurant ID is required." },
         { status: 400 }
       );
     }
 
     await connectDB();
+    const session = await mongoose.startSession();
 
-    // 3. Find and verify the restaurant
-    const restaurant = await Restaurant.findById(restaurantId);
+    try {
+      session.startTransaction();
 
-    if (!restaurant) {
-      return NextResponse.json(
-        { error: "Restaurant not found." },
-        { status: 404 }
-      );
+      const restaurant = await Restaurant.findById(restaurantId).session(session);
+      if (!restaurant) {
+        await session.abortTransaction();
+        return NextResponse.json(
+          { success: false, message: "Restaurant not found." },
+          { status: 404 }
+        );
+      }
+
+      if (restaurant.isApproved) {
+        await session.abortTransaction();
+        return NextResponse.json(
+          { success: false, message: "Restaurant is already approved." },
+          { status: 400 }
+        );
+      }
+
+      const owner = await User.findById(restaurant.owner).session(session);
+      if (!owner) {
+        await session.abortTransaction();
+        return NextResponse.json(
+          { success: false, message: "Provider account not found for this restaurant." },
+          { status: 404 }
+        );
+      }
+
+      restaurant.isApproved = true;
+      owner.isApproved = true;
+
+      await restaurant.save({ session });
+      await owner.save({ session });
+      await session.commitTransaction();
+
+      return NextResponse.json({
+        success: true,
+        message: "Restaurant and provider account approved successfully",
+        data: {
+          restaurant,
+          owner: {
+            _id: owner._id,
+            isApproved: owner.isApproved,
+          },
+        },
+      });
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
-
-    if (restaurant.isApproved) {
-      return NextResponse.json(
-        { error: "Restaurant is already approved." },
-        { status: 400 } // Bad Request
-      );
-    }
-
-    // 4. Update the approval status
-    restaurant.isApproved = true;
-    await restaurant.save();
-
-    return NextResponse.json(
-      {
-        message: "Restaurant approved successfully",
-        restaurant,
-      },
-      { status: 200 }
-    );
   } catch (error) {
     console.error("Error approving restaurant:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   }

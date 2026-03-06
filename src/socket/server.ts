@@ -1,15 +1,45 @@
 import { Server as SocketIOServer } from "socket.io";
 import { createServer } from "http";
 import jwt from "jsonwebtoken";
+import { UserRole } from "@/constants/roles";
+import { connectDB } from "@/lib/db";
+import Restaurant from "@/models/Restaurant";
 
-const PORT = parseInt(process.env.SOCKET_PORT || "3001", 10);
+declare global {
+  var __socketIoServer__: SocketIOServer | undefined;
+}
+
+function resolveSocketPort() {
+  if (process.env.SOCKET_PORT) {
+    return parseInt(process.env.SOCKET_PORT, 10);
+  }
+
+  if (process.env.NEXT_PUBLIC_SOCKET_URL) {
+    try {
+      const socketUrl = new URL(process.env.NEXT_PUBLIC_SOCKET_URL);
+      if (socketUrl.port) {
+        return parseInt(socketUrl.port, 10);
+      }
+    } catch {
+      console.warn("[Socket] NEXT_PUBLIC_SOCKET_URL is not a valid URL. Falling back to port 3001.");
+    }
+  }
+
+  return 3001;
+}
+
+const PORT = resolveSocketPort();
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
 
 export function initSocketServer() {
   if (process.env.NODE_ENV !== "production") {
     // Prevent multiple initializations in dev caused by Next HMR
-    if ((global as any).__SOCKET_SERVER_STARTED__) {
+    if (globalThis.__socketIoServer__) {
       console.log("[Socket] Server already running on port", PORT);
-      return (global as any).io;
+      return globalThis.__socketIoServer__;
     }
   }
 
@@ -31,19 +61,23 @@ export function initSocketServer() {
     const actualToken = token.startsWith("Bearer ") ? token.split(" ")[1] : token;
 
     try {
-      const decoded = jwt.verify(actualToken, process.env.JWT_SECRET || "fallback_secret") as jwt.JwtPayload;
-      if (!decoded.id || !decoded.role) {
+      const decoded = jwt.verify(actualToken, process.env.JWT_SECRET || "fallback_secret") as jwt.JwtPayload & {
+        userId?: string;
+        role?: UserRole;
+      };
+
+      if (!decoded.userId || !decoded.role) {
         return next(new Error("Authentication error: Invalid token structure"));
       }
 
       // Attach user data to socket for downstream usage
       socket.data.user = {
-        userId: decoded.id,
+        userId: decoded.userId,
         role: decoded.role
       };
 
       next();
-    } catch (err) {
+    } catch {
       return next(new Error("Authentication error: Invalid or expired token"));
     }
   });
@@ -54,20 +88,19 @@ export function initSocketServer() {
 
     // Room Joining Logic Based on Role
     try {
-      if (role === "CUSTOMER") {
+      if (role === UserRole.CUSTOMER) {
         socket.join(`user:${userId}`);
         console.log(`[Socket] Joined Room: user:${userId}`);
-      } else if (role === "ADMIN") {
+      } else if (role === UserRole.ADMIN) {
         socket.join("admin:global");
         console.log(`[Socket] Joined Room: admin:global`);
-      } else if (role === "PROVIDER") {
+      } else if (role === UserRole.PROVIDER) {
         try {
-          const mongoose = require("mongoose");
-          const connectDB = require("../lib/mongodb").default;
           await connectDB();
-          
-          const Restaurant = require("../models/Restaurant").Restaurant;
-          const restaurant = await Restaurant.findOne({ provider: userId });
+
+          const restaurant = await Restaurant.findOne({ owner: userId })
+            .select("_id")
+            .lean();
           
           if (restaurant) {
             socket.join(`provider:${restaurant._id.toString()}`);
@@ -92,12 +125,21 @@ export function initSocketServer() {
     // Explicit Instruction: Do not mix order logic here.
   });
 
+  httpServer.once("error", (error) => {
+    if (isErrnoException(error) && error.code === "EADDRINUSE") {
+      console.warn(`[Socket] Port ${PORT} is already in use. Assuming another socket server instance is active.`);
+      io.close();
+      return;
+    }
+
+    console.error("[Socket] Failed to start socket server:", error);
+  });
+
   httpServer.listen(PORT, () => {
     console.log(`[Socket] Server started and listening independently on port ${PORT}`);
     
     if (process.env.NODE_ENV !== "production") {
-      (global as any).__SOCKET_SERVER_STARTED__ = true;
-      (global as any).io = io;
+      globalThis.__socketIoServer__ = io;
     }
   });
 

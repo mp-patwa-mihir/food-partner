@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { Menu, ShoppingCart } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
+import { UserRole } from "@/constants/roles";
 import { SocketIndicator } from "./SocketIndicator";
 
 import { Button } from "@/components/ui/button";
@@ -26,13 +27,15 @@ const NAV_LINKS = [
 export function PublicNavbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const { user, logout, isLoading: isAuthLoading } = useAuth();
   const { cart, setDrawerOpen } = useCart();
-  const pathname = usePathname();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const isCustomer = String(user?.role) === UserRole.CUSTOMER;
+  const dashboardHref =
+    user?.role === UserRole.ADMIN
+      ? "/admin"
+      : user?.role === UserRole.PROVIDER
+        ? "/provider/restaurant"
+        : "/orders";
 
   // Detect scrolling to toggle sticky header styling with shadow/blur
   useEffect(() => {
@@ -44,11 +47,6 @@ export function PublicNavbar() {
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  // Close mobile sheet on route change
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-  }, [pathname]);
 
   return (
     <motion.header
@@ -88,32 +86,45 @@ export function PublicNavbar() {
 
         {/* Desktop Auth Buttons & Cart */}
         <div className="hidden md:flex items-center gap-4">
-          {mounted && (
-            <>
-              <SocketIndicator />
+          <>
+            <SocketIndicator />
+            {isCustomer && (
               <Button
-              variant="ghost"
-              size="icon"
-              className="relative"
-              onClick={() => setDrawerOpen(true)}
-            >
-              <ShoppingCart className="h-5 w-5" />
-              {cart && cart.items.length > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                  {cart.items.reduce((acc, item) => acc + item.quantity, 0)}
-                </span>
-              )}
-              <span className="sr-only">Open Cart</span>
-            </Button>
+                variant="ghost"
+                size="icon"
+                className="relative"
+                onClick={() => setDrawerOpen(true)}
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {cart && cart.items.length > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                    {cart.items.reduce((acc, item) => acc + item.quantity, 0)}
+                  </span>
+                )}
+                <span className="sr-only">Open Cart</span>
+              </Button>
+            )}
+          </>
+
+          {!isAuthLoading && user ? (
+            <>
+              <Button variant="ghost" asChild>
+                <Link href={dashboardHref}>{isCustomer ? "My Orders" : "Dashboard"}</Link>
+              </Button>
+              <Button variant="outline" onClick={() => logout()}>
+                Log out
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" asChild>
+                <Link href="/login">Log in</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/register">Get Started</Link>
+              </Button>
             </>
           )}
-
-          <Button variant="ghost" asChild>
-            <Link href="/login">Log in</Link>
-          </Button>
-          <Button asChild>
-            <Link href="/register">Get Started</Link>
-          </Button>
         </div>
 
         {/* Mobile Navigation (Sheet) */}
@@ -142,21 +153,58 @@ export function PublicNavbar() {
                 ))}
 
                 <div className="mt-8 flex flex-col gap-3">
-                  <Button
-                    variant="outline"
-                    className="w-full justify-center"
-                    asChild
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <Link href="/login">Log in</Link>
-                  </Button>
-                  <Button
-                    className="w-full justify-center"
-                    asChild
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    <Link href="/register">Get Started</Link>
-                  </Button>
+                  {!isAuthLoading && user ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-center"
+                        asChild
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <Link href={dashboardHref}>{isCustomer ? "My Orders" : "Dashboard"}</Link>
+                      </Button>
+                      {isCustomer && (
+                        <Button
+                          variant="outline"
+                          className="w-full justify-center"
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            setDrawerOpen(true);
+                          }}
+                        >
+                          Open Cart
+                        </Button>
+                      )}
+                      <Button
+                        className="w-full justify-center"
+                        variant="destructive"
+                        onClick={async () => {
+                          setIsMobileMenuOpen(false);
+                          await logout();
+                        }}
+                      >
+                        Log out
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-center"
+                        asChild
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <Link href="/login">Log in</Link>
+                      </Button>
+                      <Button
+                        className="w-full justify-center"
+                        asChild
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <Link href="/register">Get Started</Link>
+                      </Button>
+                    </>
+                  )}
                 </div>
               </nav>
             </SheetContent>
