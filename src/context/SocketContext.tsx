@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 
@@ -13,17 +13,17 @@ const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
 export function SocketProvider({ children }: { children: ReactNode }) {
   const { user, token, logout } = useAuth();
+  const socketRef = useRef<Socket | null>(null);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
     // Only connect if the user is fully authenticated and has a token available locally
     if (!user || !token) {
-      if (socket) {
+      if (socketRef.current) {
         // Handle cleanup gracefully on logout
-        socket.disconnect();
-        setSocket(null);
-        setIsConnected(false);
+        socketRef.current.disconnect();
+        socketRef.current = null;
       }
       return;
     }
@@ -41,13 +41,17 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       randomizationFactor: 0.5,
     });
 
+    socketRef.current = socketInstance;
+
     socketInstance.on("connect", () => {
       console.log("[Socket Client] Connected with ID:", socketInstance.id);
+      setSocket(socketInstance);
       setIsConnected(true);
     });
 
     socketInstance.on("disconnect", (reason) => {
       console.log("[Socket Client] Disconnected. Reason:", reason);
+      setSocket(null);
       setIsConnected(false);
     });
 
@@ -62,10 +66,11 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    setSocket(socketInstance);
-
     // Cleanup when Context unmounts entirely
     return () => {
+      if (socketRef.current === socketInstance) {
+        socketRef.current = null;
+      }
       socketInstance.disconnect();
     };
     // Re-run connection effect when Token specifically changes

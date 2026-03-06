@@ -41,10 +41,10 @@ export async function GET(
       .sort({ name: 1 })
       .lean();
 
-    // 3. Fetch available menu items for this restaurant
+    // 3. Fetch menu items for this restaurant so the UI can show sold-out state
     const items = await MenuItem.find(
-      { restaurant: restaurantId, isAvailable: true },
-      { __v: 0, restaurant: 0, isAvailable: 0, createdAt: 0, updatedAt: 0 } // exclude internals
+      { restaurant: restaurantId },
+      { __v: 0, restaurant: 0, createdAt: 0, updatedAt: 0 } // exclude internals
     ).lean();
 
     // 4. Group items by category to match the requested structured response

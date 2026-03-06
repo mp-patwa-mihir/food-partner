@@ -1,34 +1,80 @@
 import { NextResponse } from "next/server";
-import { z, ZodError } from "zod";
-import { connectDB } from "@/lib/db";
-import Restaurant from "@/models/Restaurant";
+import { z } from "zod";
 import MenuCategory from "@/models/MenuCategory";
-import { UserRole } from "@/constants/roles";
-import { headers } from "next/headers";
+import MenuItem from "@/models/MenuItem";
+import { getProviderContext } from "@/lib/provider-auth";
 
 const createCategorySchema = z.object({
   name: z.string().min(1, "Category name is required").trim(),
 });
 
-export async function POST(req: Request) {
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export async function GET() {
   try {
-    const requestHeaders = await headers();
-    const userId = requestHeaders.get("x-user-id");
-    const userRole = requestHeaders.get("x-user-role");
+    const context = await getProviderContext({ allowMissingRestaurant: true });
+    if ("errorResponse" in context) return context.errorResponse;
 
-    // 1. Verify User is Authenticated and is a PROVIDER
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (userRole !== UserRole.PROVIDER) {
+    if (!context.restaurant) {
       return NextResponse.json(
-        { error: "Forbidden. Only registered providers can create categories." },
-        { status: 403 }
+        { restaurant: null, categories: [] },
+        { status: 200 }
       );
     }
 
-    // 2. Parse and Validate Request Body
+    const restaurant = context.restaurant;
+
+    const [categories, itemCounts] = await Promise.all([
+      MenuCategory.find({ restaurant: restaurant._id })
+        .sort({ isActive: -1, name: 1 })
+        .lean(),
+      MenuItem.aggregate([
+        { $match: { restaurant: restaurant._id } },
+        { $group: { _id: "$category", itemCount: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const counts = new Map(
+      itemCounts.map((entry: { _id: string; itemCount: number }) => [
+        String(entry._id),
+        entry.itemCount,
+      ])
+    );
+
+    return NextResponse.json(
+      {
+        restaurant,
+        categories: categories.map((category) => ({
+          ...category,
+          itemCount: counts.get(String(category._id)) ?? 0,
+        })),
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Error fetching menu categories:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const context = await getProviderContext();
+    if ("errorResponse" in context) return context.errorResponse;
+    const restaurant = context.restaurant;
+
+    if (!restaurant) {
+      return NextResponse.json(
+        { error: "Restaurant not found. Please create a restaurant first." },
+        { status: 404 }
+      );
+    }
+
     const body = await req.json();
     const parsed = createCategorySchema.safeParse(body);
 
@@ -40,38 +86,22 @@ export async function POST(req: Request) {
     }
 
     const { name: categoryName } = parsed.data;
-
-    await connectDB();
-
-    // 3. Fetch the provider's restaurant to ensure they have one
-    const restaurant = await Restaurant.findOne({ owner: userId });
-    
-    if (!restaurant) {
-      return NextResponse.json(
-        { error: "You must create a restaurant before adding categories." },
-        { status: 404 }
-      );
-    }
-
-    // 4. Check for duplicate categories directly
-    // (Though the DB index protects against this, checking here gives a better error message)
     const existingCategory = await MenuCategory.findOne({ 
-      restaurant: restaurant._id, 
-      name: { $regex: new RegExp(`^${categoryName}$`, "i") } // case-insensitive check
+      restaurant: restaurant._id,
+      name: { $regex: new RegExp(`^${escapeRegExp(categoryName)}$`, "i") },
     });
 
     if (existingCategory) {
       return NextResponse.json(
         { error: `A category named "${categoryName}" already exists for your restaurant.` },
-        { status: 409 } // Conflict
+        { status: 409 }
       );
     }
 
-    // 5. Create the Category
     const newCategory = await MenuCategory.create({
       name: categoryName,
       restaurant: restaurant._id,
-      isActive: true, // Default
+      isActive: true,
     });
 
     return NextResponse.json(
@@ -81,14 +111,17 @@ export async function POST(req: Request) {
       },
       { status: 201 }
     );
-  } catch (error: any) {
-    // 6. Handle MongoDB duplicate key error explicitly (MongoServerError: E11000)
-    // In case the RegExp check missed it due to exotic characters or race conditions
-    if (error.code === 11000) {
-        return NextResponse.json(
-            { error: "A category with this name already exists." },
-            { status: 409 }
-        );
+  } catch (error: unknown) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === 11000
+    ) {
+      return NextResponse.json(
+        { error: "A category with this name already exists." },
+        { status: 409 }
+      );
     }
 
     console.error("Error creating menu category:", error);

@@ -9,7 +9,12 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import type { LoginInput } from "@/schemas/auth.schema";
-import type { AuthUser } from "@/types";
+import type { ApiResponse, AuthSessionData, AuthUser } from "@/types";
+import { getLoginRedirectForRole } from "@/lib/auth-redirect";
+
+interface LoginOptions {
+  callbackUrl?: string | null;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,7 +22,7 @@ interface AuthContextValue {
   user:     AuthUser | null;
   token:    string | null;
   isLoading: boolean;
-  login:    (credentials: LoginInput) => Promise<{ success: boolean; message: string }>;
+  login:    (credentials: LoginInput, options?: LoginOptions) => Promise<{ success: boolean; message: string }>;
   logout:   () => Promise<void>;
 }
 
@@ -46,9 +51,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch("/api/auth/me", { credentials: "include" });
         if (!cancelled) {
           if (res.ok) {
-            const json = await res.json() as { data: AuthUser; token?: string };
-            setUser(json.data);
-            if (json.token) setToken(json.token);
+            const json = await res.json() as ApiResponse<AuthUser> & { token?: string };
+            if (json.success) {
+              setUser(json.data);
+              if (json.token) setToken(json.token);
+            } else {
+              setUser(null);
+              setToken(null);
+            }
           } else {
             setUser(null);
             setToken(null);
@@ -67,7 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Login ─────────────────────────────────────────────────────────────────
   const login = useCallback(
-    async (credentials: LoginInput): Promise<{ success: boolean; message: string }> => {
+    async (
+      credentials: LoginInput,
+      options?: LoginOptions
+    ): Promise<{ success: boolean; message: string }> => {
       setIsLoading(true);
       try {
         const res = await fetch("/api/auth/login", {
@@ -77,18 +90,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           body:        JSON.stringify(credentials),
         });
 
-        const json = await res.json() as { success: boolean; message: string; data?: { user: AuthUser; token: string } };
+        const json = await res.json() as ApiResponse<AuthSessionData>;
 
-        if (json.success && json.data?.user) {
+        if (json.success) {
           setUser(json.data.user);
           setToken(json.data.token);
-          // Navigate based on role
-          const roleRedirect: Record<string, string> = {
-            ADMIN:    "/admin",
-            PROVIDER: "/provider",
-            CUSTOMER: "/dashboard",
-          };
-          router.push(roleRedirect[json.data.user.role] ?? "/");
+          router.replace(
+            getLoginRedirectForRole(json.data.user.role, options?.callbackUrl)
+          );
         }
 
         return { success: json.success, message: json.message };

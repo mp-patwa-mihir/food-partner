@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -22,6 +22,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Form,
   FormControl,
   FormField,
@@ -42,14 +49,28 @@ type Category = {
   _id: string;
   name: string;
   isActive: boolean;
+  itemCount: number;
 };
 
+type ProviderRestaurant = {
+  _id: string;
+  name: string;
+  isApproved: boolean;
+};
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "An unexpected error occurred.";
+}
+
 export default function CategoryManagementPage() {
+  const [restaurant, setRestaurant] = useState<ProviderRestaurant | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [editName, setEditName] = useState("");
   const [error, setError] = useState("");
-  const [hasRestaurant, setHasRestaurant] = useState(true);
 
   const form = useForm<CategoryFormValues>({
     resolver: zodResolver(createCategorySchema),
@@ -58,49 +79,35 @@ export default function CategoryManagementPage() {
     },
   });
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  const fetchData = useCallback(async () => {
     try {
-      // Fetch restaurant first to ensure they have one and extract its ID
-      const restResponse = await fetch("/api/provider/restaurant");
-      if (!restResponse.ok) {
-        if (restResponse.status === 404) setHasRestaurant(false);
-        throw new Error("Could not load restaurant context.");
-      }
-      
-      const restData = await restResponse.json();
-      if (!restData.restaurant) {
-        setHasRestaurant(false);
-        setIsLoading(false);
-        return;
+      setIsLoading(true);
+      setError("");
+
+      const response = await fetch("/api/provider/category");
+      const result = (await response.json()) as {
+        error?: string;
+        restaurant: ProviderRestaurant | null;
+        categories: Category[];
+      };
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to load categories.");
       }
 
-      setHasRestaurant(true);
-
-      // Now fetch the actual public or specific Categories.
-      // Wait, we don't have a GET /api/provider/category route yet! 
-      // Fortunately, the public route /api/restaurants/[id] returns all categories.
-      const catResponse = await fetch(`/api/restaurants/${restData.restaurant._id}`);
-      if (catResponse.ok) {
-        const catData = await catResponse.json();
-        // The public details route groups categories and items.
-        // categories: [ { category: { _id, name, isActive }, items: [] } ]
-        const mappedCategories = catData.categories.map((c: any) => c.category);
-        setCategories(mappedCategories);
-      }
-    } catch (err: any) {
-      console.error(err);
-      if (err.message !== "Could not load restaurant context.") {
-        setError("Failed to load categories.");
-      }
+      setRestaurant(result.restaurant);
+      setCategories(result.categories || []);
+    } catch (error: unknown) {
+      console.error(error);
+      setError(getErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    void fetchData();
+  }, [fetchData]);
 
   async function onSubmit(data: CategoryFormValues) {
     setIsSubmitting(true);
@@ -119,13 +126,64 @@ export default function CategoryManagementPage() {
         throw new Error(result.error || "Failed to create category.");
       }
 
-      // Add the newly created category natively from the response API array
-      setCategories((prev) => [...prev, result.category]);
       form.reset();
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
+      await fetchData();
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleEditSubmit() {
+    if (!editingCategory) return;
+
+    setActiveCategoryId(editingCategory._id);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/provider/category/${editingCategory._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName }),
+      });
+
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to update category.");
+      }
+
+      setEditingCategory(null);
+      setEditName("");
+      await fetchData();
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
+    } finally {
+      setActiveCategoryId(null);
+    }
+  }
+
+  async function toggleCategoryStatus(category: Category) {
+    setActiveCategoryId(category._id);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/provider/category/${category._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !category.isActive }),
+      });
+
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to update category status.");
+      }
+
+      await fetchData();
+    } catch (error: unknown) {
+      setError(getErrorMessage(error));
+    } finally {
+      setActiveCategoryId(null);
     }
   }
 
@@ -137,7 +195,7 @@ export default function CategoryManagementPage() {
     );
   }
 
-  if (!hasRestaurant) {
+  if (!restaurant) {
     return (
       <div className="max-w-4xl mx-auto mt-10">
         <Alert className="bg-amber-50 text-amber-800 border-amber-200">
@@ -160,6 +218,22 @@ export default function CategoryManagementPage() {
         </div>
       </div>
 
+      <Alert
+        className={
+          restaurant.isApproved
+            ? "bg-green-50 text-green-800 border-green-200"
+            : "bg-amber-50 text-amber-800 border-amber-200"
+        }
+      >
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle className="font-semibold">
+          {restaurant.isApproved ? "Restaurant is live" : "Restaurant pending approval"}
+        </AlertTitle>
+        <AlertDescription>
+          Categories are managed privately here. Menu publishing stays locked until your restaurant is approved.
+        </AlertDescription>
+      </Alert>
+
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -173,7 +247,7 @@ export default function CategoryManagementPage() {
         <CardHeader>
           <CardTitle>Add New Category</CardTitle>
           <CardDescription>
-            Categories organize your menu items (e.g., "Starters", "Main Course", "Desserts").
+            Categories organize your menu items, for example Starters, Main Course, and Desserts.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -223,14 +297,16 @@ export default function CategoryManagementPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Items</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="w-[100px] text-right">Actions</TableHead>
+                    <TableHead className="w-[220px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {categories.map((category) => (
                     <TableRow key={category._id}>
                       <TableCell className="font-medium">{category.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{category.itemCount}</TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -242,9 +318,31 @@ export default function CategoryManagementPage() {
                           {category.isActive ? "Active" : "Archived"}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" disabled>
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingCategory(category);
+                            setEditName(category.name);
+                          }}
+                          disabled={activeCategoryId === category._id}
+                        >
                           Edit
+                        </Button>
+                        <Button
+                          variant={category.isActive ? "ghost" : "outline"}
+                          size="sm"
+                          onClick={() => void toggleCategoryStatus(category)}
+                          disabled={activeCategoryId === category._id}
+                        >
+                          {activeCategoryId === category._id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : category.isActive ? (
+                            "Archive"
+                          ) : (
+                            "Restore"
+                          )}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -255,6 +353,56 @@ export default function CategoryManagementPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={Boolean(editingCategory)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingCategory(null);
+            setEditName("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit category</DialogTitle>
+            <DialogDescription>
+              Update the label providers use when organizing menu items.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Category name</label>
+              <Input
+                value={editName}
+                onChange={(event) => setEditName(event.target.value)}
+                placeholder="e.g. Desserts"
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingCategory(null);
+                  setEditName("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void handleEditSubmit()}
+                disabled={!editName.trim() || activeCategoryId === editingCategory?._id}
+              >
+                {activeCategoryId === editingCategory?._id ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                Save changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

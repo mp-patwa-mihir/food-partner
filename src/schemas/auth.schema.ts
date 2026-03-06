@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { UserRole } from "@/constants/roles";
 
 // ─── Reusable Field Rules ────────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ export const registerSchema = z
       .max(50, "Name must be at most 50 characters")
       .trim(),
     email:           emailField,
+    role:            z.enum([UserRole.CUSTOMER, UserRole.PROVIDER]),
     password:        passwordField,
     confirmPassword: z.string(),
   })

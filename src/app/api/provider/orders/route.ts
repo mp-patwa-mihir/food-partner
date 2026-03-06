@@ -14,7 +14,7 @@ export async function GET(req: Request) {
 
     // Verify provider
     if (!userId || userRole !== UserRole.PROVIDER) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
     }
 
     await connectDB();
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
 
     if (!restaurant) {
       return NextResponse.json(
-        { error: "Restaurant not found for this provider" },
+        { success: false, message: "Restaurant not found for this provider" },
         { status: 404 }
       );
     }
@@ -77,14 +77,18 @@ export async function GET(req: Request) {
 
     return NextResponse.json(
       {
-        orders,
-        pagination: {
-          page: safePage,
-          limit: safeLimit,
-          totalElements,
-          totalPages,
-          hasNext: safePage < totalPages,
-          hasPrev: safePage > 1,
+        success: true,
+        message: "Orders fetched successfully",
+        data: {
+          orders,
+          pagination: {
+            page: safePage,
+            limit: safeLimit,
+            totalElements,
+            totalPages,
+            hasNext: safePage < totalPages,
+            hasPrev: safePage > 1,
+          },
         },
       },
       { status: 200 }
@@ -92,7 +96,7 @@ export async function GET(req: Request) {
   } catch (error: any) {
     console.error("Provider Orders GET Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   }

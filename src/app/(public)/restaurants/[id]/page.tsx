@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MapPin, Star, Clock, Info, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
+import { UserRole } from "@/constants/roles";
+import { formatCurrency, getErrorMessage } from "@/lib/utils";
+import { Loader2, MapPin, ShoppingCart, Star, Clock } from "lucide-react";
 
 type MenuItemType = {
   _id: string;
@@ -43,12 +48,16 @@ type RestaurantDetail = {
 
 export default function RestaurantDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
+  const { user } = useAuth();
+  const { addItem } = useCart();
   
   const [restaurant, setRestaurant] = useState<RestaurantDetail | null>(null);
   const [categories, setCategories] = useState<CategoryGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchDetails() {
@@ -64,8 +73,8 @@ export default function RestaurantDetailPage() {
         const data = await response.json();
         setRestaurant(data.restaurant);
         setCategories(data.categories || []);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (error) {
+        setError(getErrorMessage(error, "Failed to load restaurant details."));
       } finally {
         setIsLoading(false);
       }
@@ -73,6 +82,25 @@ export default function RestaurantDetailPage() {
 
     fetchDetails();
   }, [id]);
+
+  const isCustomer = String(user?.role) === UserRole.CUSTOMER;
+  const canOrder = Boolean(restaurant?.isOpen) && (!user || isCustomer);
+
+  const handleAddToCart = async (menuItemId: string) => {
+    if (!restaurant) return;
+
+    if (!user) {
+      router.push(`/login?callbackUrl=${encodeURIComponent(`/restaurants/${restaurant._id}`)}`);
+      return;
+    }
+
+    setActiveItemId(menuItemId);
+    try {
+      await addItem(menuItemId, 1, restaurant._id);
+    } finally {
+      setActiveItemId(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -198,7 +226,7 @@ export default function RestaurantDetailPage() {
             <div className="text-center py-16 bg-white dark:bg-zinc-900 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
               <span className="text-4xl block mb-4">📋</span>
               <h3 className="text-lg font-bold">No Menu Items Yet</h3>
-              <p className="text-zinc-500">This restaurant hasn't mapped their menu catalog yet.</p>
+              <p className="text-zinc-500">This restaurant has not mapped their menu catalog yet.</p>
             </div>
           ) : (
             categories.map((group) => {
@@ -233,7 +261,7 @@ export default function RestaurantDetailPage() {
                                 </h3>
                               </div>
                               <p className="text-base font-bold text-zinc-900 dark:text-zinc-100 mt-1 mb-2">
-                                ₹{item.price}
+                                {formatCurrency(item.price)}
                               </p>
                               {item.description && (
                                 <p className="text-sm text-zinc-500 dark:text-zinc-400 line-clamp-2">
@@ -246,11 +274,31 @@ export default function RestaurantDetailPage() {
                               {!item.isAvailable && (
                                 <Badge variant="secondary" className="text-xs bg-red-50 text-red-600 border-transparent dark:bg-red-950/50">Sold Out</Badge>
                               )}
-                              {/* Future Add To Cart Button placement can go here */}
                               {item.isAvailable && (
-                                <div className="text-xs font-medium text-primary bg-primary/10 px-3 py-1.5 rounded-full">
-                                  Customizable
-                                </div>
+                                <Button
+                                  size="sm"
+                                  className="ml-auto"
+                                  disabled={!canOrder || activeItemId === item._id}
+                                  onClick={() => handleAddToCart(item._id)}
+                                >
+                                  {activeItemId === item._id ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      Adding...
+                                    </>
+                                  ) : !user ? (
+                                    "Log in to order"
+                                  ) : !restaurant?.isOpen ? (
+                                    "Currently closed"
+                                  ) : !isCustomer ? (
+                                    "Customer only"
+                                  ) : (
+                                    <>
+                                      <ShoppingCart className="mr-2 h-4 w-4" />
+                                      Add to cart
+                                    </>
+                                  )}
+                                </Button>
                               )}
                             </div>
                           </div>

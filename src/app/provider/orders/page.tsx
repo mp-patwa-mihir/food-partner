@@ -6,6 +6,15 @@ import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { useRouter } from "next/navigation";
+import type {
+  ApiResponse,
+  NewOrderEvent,
+  OrderStatus,
+  OrderStatusEvent,
+  OrdersListData,
+  PaginationMeta,
+  ProviderOrder,
+} from "@/types";
 
 import {
   Card,
@@ -16,51 +25,26 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
+import { formatCurrency, getErrorMessage } from "@/lib/utils";
 
-interface OrderItem {
-  menuItemId: string;
-  name: string;
-  price: number;
-  quantity: number;
-}
-
-interface Order {
-  _id: string;
-  user?: {
-    _id: string;
-    name: string;
-    email: string;
-  };
-  items: OrderItem[];
-  totalAmount: number;
-  status: string;
-  deliveryAddress: {
-    street: string;
-    city: string;
-    pincode: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
+type AudioWindow = Window & typeof globalThis & {
+  webkitAudioContext?: typeof AudioContext;
+};
 
 export default function ProviderOrdersPage() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const { socket, isConnected } = useSocket();
   const router = useRouter();
 
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<ProviderOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    limit: 10,
+    totalElements: 0,
     hasNext: false,
     hasPrev: false,
     totalPages: 1,
@@ -71,7 +55,12 @@ export default function ProviderOrdersPage() {
   // Play a subtle beep using the Web Audio API without needing external assets
   const playNotificationSound = useCallback(() => {
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextCtor = window.AudioContext || (window as AudioWindow).webkitAudioContext;
+      if (!AudioContextCtor) {
+        throw new Error("Audio Context not supported");
+      }
+
+      const audioCtx = new AudioContextCtor();
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
 
@@ -89,13 +78,13 @@ export default function ProviderOrdersPage() {
 
       oscillator.start();
       oscillator.stop(audioCtx.currentTime + 0.3);
-    } catch (e) {
+    } catch {
       console.error("Audio Context not supported or failed to play");
     }
   }, []);
 
   // Use a ref for orders to safely access them inside the socket listener without stale closures
-  const ordersRef = useRef<Order[]>([]);
+  const ordersRef = useRef<ProviderOrder[]>([]);
   useEffect(() => {
     ordersRef.current = orders;
   }, [orders]);
@@ -112,12 +101,12 @@ export default function ProviderOrdersPage() {
     try {
       setIsLoading(true);
       const res = await fetch(`/api/provider/orders?page=${pageNum}&limit=10`);
-      if (!res.ok) throw new Error("Failed to fetch orders");
-      const data = await res.json();
-      setOrders(data.orders);
-      setPagination(data.pagination);
-    } catch (error: any) {
-      toast.error(error.message);
+      const data = await res.json() as ApiResponse<OrdersListData<ProviderOrder>>;
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to fetch orders");
+      setOrders(data.data.orders);
+      setPagination(data.data.pagination);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to fetch orders"));
     } finally {
       setIsLoading(false);
     }
@@ -135,7 +124,7 @@ export default function ProviderOrdersPage() {
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    const handleNewOrder = (payload: any) => {
+    const handleNewOrder = (payload: NewOrderEvent) => {
       // 1. Prevent duplicate insertion from rapid duplicated socket events
       if (processedOrdersRef.current.has(payload.orderId)) return;
       processedOrdersRef.current.add(payload.orderId);
@@ -147,7 +136,7 @@ export default function ProviderOrdersPage() {
       toast.success(
         <div className="flex flex-col gap-1">
           <span className="font-bold">🚨 New Order Received!</span>
-          <span className="text-sm">Order ID: {payload.orderId.slice(-6).toUpperCase()} - ${payload.totalAmount.toFixed(2)}</span>
+          <span className="text-sm">Order ID: {payload.orderId.slice(-6).toUpperCase()} - {formatCurrency(payload.totalAmount)}</span>
         </div>,
         { duration: 8000 }
       );
@@ -168,7 +157,7 @@ export default function ProviderOrdersPage() {
       }
     };
 
-    const handleOrderStatusUpdate = (payload: any) => {
+    const handleOrderStatusUpdate = (payload: OrderStatusEvent) => {
        // Since the provider is changing the status, they probably already know, but just in case
        // another admin or the system changes it:
        setOrders((prev) => {
@@ -191,7 +180,7 @@ export default function ProviderOrdersPage() {
     };
   }, [socket, isConnected, playNotificationSound, page]);
 
-  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+  const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {
       setUpdatingId(orderId);
       const res = await fetch(`/api/provider/orders/${orderId}/status`, {
@@ -200,21 +189,21 @@ export default function ProviderOrdersPage() {
         body: JSON.stringify({ status: newStatus }),
       });
       
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to update status");
+      const data = await res.json() as ApiResponse<{ order: ProviderOrder }>;
+      if (!res.ok || !data.success) throw new Error(data.message || "Failed to update status");
       
-      toast.success("Order status updated");
+      toast.success(data.message);
       setOrders((prev) =>
         prev.map((o) => (o._id === orderId ? { ...o, status: newStatus } : o))
       );
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to update order status"));
     } finally {
       setUpdatingId(null);
     }
   };
 
-  const getStatusBadgeVariant = (status: string) => {
+  const getStatusBadgeVariant = (status: OrderStatus) => {
     switch (status) {
       case "PENDING": return "secondary";
       case "ACCEPTED":
@@ -303,7 +292,7 @@ export default function ProviderOrdersPage() {
                    <div>
                      <h4 className="font-semibold text-sm mb-3 flex justify-between">
                         Order Items
-                        <span className="text-primary">${order.totalAmount.toFixed(2)}</span>
+                        <span className="text-primary">{formatCurrency(order.totalAmount)}</span>
                      </h4>
                      <div className="space-y-2 text-sm max-h-[150px] overflow-y-auto pr-2">
                         {order.items.map((item, idx) => (
@@ -313,7 +302,7 @@ export default function ProviderOrdersPage() {
                               <span className="text-muted-foreground">{item.name}</span>
                            </div>
                            <span className="font-medium">
-                              ${(item.price * item.quantity).toFixed(2)}
+                              {formatCurrency(item.price * item.quantity)}
                            </span>
                            </div>
                         ))}

@@ -13,7 +13,7 @@ export async function GET(req: Request) {
 
     // Verify customer
     if (!userId || userRole !== UserRole.CUSTOMER) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -48,14 +48,18 @@ export async function GET(req: Request) {
 
     return NextResponse.json(
       {
-        orders,
-        pagination: {
-          page: safePage,
-          limit: safeLimit,
-          totalElements,
-          totalPages,
-          hasNext: safePage < totalPages,
-          hasPrev: safePage > 1,
+        success: true,
+        message: "Orders fetched successfully",
+        data: {
+          orders,
+          pagination: {
+            page: safePage,
+            limit: safeLimit,
+            totalElements,
+            totalPages,
+            hasNext: safePage < totalPages,
+            hasPrev: safePage > 1,
+          },
         },
       },
       { status: 200 }
@@ -63,7 +67,7 @@ export async function GET(req: Request) {
   } catch (error: any) {
     console.error("Customer Orders GET Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   }

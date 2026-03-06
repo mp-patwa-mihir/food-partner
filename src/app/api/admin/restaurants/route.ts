@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
 
-    let query: any = {};
+    const query: { isApproved?: boolean } = {};
     if (status === "pending") {
       query.isApproved = false;
     } else if (status === "approved") {
@@ -31,13 +31,13 @@ export async function GET(req: Request) {
       .populate({
         path: "owner",
         model: User,
-        select: "name email phone",
+        select: "name email phone isApproved role",
       })
       .sort({ createdAt: -1 })
       .lean();
 
     return NextResponse.json({ restaurants });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Admin Restaurants GET Error:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },

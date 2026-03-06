@@ -1,50 +1,29 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { connectDB } from "@/lib/db";
-import Restaurant from "@/models/Restaurant";
 import MenuCategory from "@/models/MenuCategory";
 import MenuItem from "@/models/MenuItem";
-import { UserRole } from "@/constants/roles";
-import { headers } from "next/headers";
+import { getProviderContext } from "@/lib/provider-auth";
 
-// Partial schema for updates
-const updateMenuItemSchema = z.object({
-  name: z.string().min(1, "Item name cannot be empty").trim().optional(),
-  description: z.string().optional(),
-  price: z.number().min(0, "Price cannot be negative").optional(),
-  image: z.string().url("Must be a valid image URL").optional().or(z.literal("")),
-  isVeg: z.boolean().optional(),
-  isAvailable: z.boolean().optional(),
-  category: z.string().min(1, "Category ID cannot be empty").optional(),
-  stock: z.number().min(0, "Stock cannot be negative").nullable().optional(),
-});
+const updateMenuItemSchema = z
+  .object({
+    name: z.string().min(1, "Item name cannot be empty").trim().optional(),
+    description: z.string().optional(),
+    price: z.coerce.number().min(0, "Price cannot be negative").optional(),
+    image: z.string().url("Must be a valid image URL").optional().or(z.literal("")),
+    isVeg: z.boolean().optional(),
+    isAvailable: z.boolean().optional(),
+    category: z.string().min(1, "Category ID cannot be empty").optional(),
+    stock: z.union([z.coerce.number().min(0, "Stock cannot be negative"), z.null()]).optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one field is required.",
+  });
 
-/**
- * Shared helper to verify provider role, find their restaurant, and ensure
- * the menu item exists and belongs to them.
- */
 async function verifyProviderAndItem(menuItemId: string) {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("x-user-id");
-  const userRole = requestHeaders.get("x-user-role");
+  const context = await getProviderContext();
+  if ("errorResponse" in context) return context;
+  const restaurant = context.restaurant;
 
-  if (!userId) {
-    return { errorResponse: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-
-  if (userRole !== UserRole.PROVIDER) {
-    return {
-      errorResponse: NextResponse.json(
-        { error: "Forbidden. Only registered providers can access this." },
-        { status: 403 }
-      )
-    };
-  }
-
-  await connectDB();
-
-  // 1. Get the provider's restaurant
-  const restaurant = await Restaurant.findOne({ owner: userId });
   if (!restaurant) {
     return {
       errorResponse: NextResponse.json(
@@ -54,7 +33,6 @@ async function verifyProviderAndItem(menuItemId: string) {
     };
   }
 
-  // 2. Get the menu item
   const menuItem = await MenuItem.findById(menuItemId);
   if (!menuItem) {
     return {
@@ -65,8 +43,7 @@ async function verifyProviderAndItem(menuItemId: string) {
     };
   }
 
-  // 3. Ensure the menu item belongs to the provider's restaurant
-  if (menuItem.restaurant.toString() !== restaurant._id.toString()) {
+  if (String(menuItem.restaurant) !== String(restaurant._id)) {
     return {
       errorResponse: NextResponse.json(
         { error: "Forbidden. You cannot edit items belonging to another restaurant." },
@@ -75,10 +52,55 @@ async function verifyProviderAndItem(menuItemId: string) {
     };
   }
 
-  return { restaurant, menuItem };
+  return { ...context, restaurant, menuItem };
 }
 
-// ─── PATCH: Update Menu Item ────────────────────────────────────────────────
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const resolvedParams = await params;
+    const menuItemId = resolvedParams.id;
+
+    if (!menuItemId) {
+      return NextResponse.json({ error: "Menu item ID is required." }, { status: 400 });
+    }
+
+    const verification = await verifyProviderAndItem(menuItemId);
+    if ("errorResponse" in verification) return verification.errorResponse;
+    if (!("menuItem" in verification) || !verification.menuItem) {
+      return NextResponse.json({ error: "Menu item not found." }, { status: 404 });
+    }
+
+    const { restaurant, menuItem } = verification;
+
+    if (!restaurant) {
+      return NextResponse.json(
+        { error: "Restaurant not found. Please create a restaurant first." },
+        { status: 404 }
+      );
+    }
+
+    const categories = await MenuCategory.find({ restaurant: restaurant._id })
+      .sort({ isActive: -1, name: 1 })
+      .lean();
+
+    await menuItem.populate({
+      path: "category",
+      model: MenuCategory,
+      select: "_id name isActive",
+    });
+
+    return NextResponse.json(
+      { restaurant, categories, menuItem },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Error fetching menu item:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+}
 
 export async function PATCH(
   req: Request,
@@ -92,10 +114,31 @@ export async function PATCH(
       return NextResponse.json({ error: "Menu item ID is required." }, { status: 400 });
     }
 
-    const { errorResponse, restaurant, menuItem } = await verifyProviderAndItem(menuItemId);
-    if (errorResponse) return errorResponse;
+    const verification = await verifyProviderAndItem(menuItemId);
+    if ("errorResponse" in verification) return verification.errorResponse;
+    if (!("menuItem" in verification) || !verification.menuItem) {
+      return NextResponse.json({ error: "Menu item not found." }, { status: 404 });
+    }
 
-    // Parse incoming update data
+    const { restaurant, menuItem } = verification;
+
+    if (!restaurant) {
+      return NextResponse.json(
+        { error: "Restaurant not found. Please create a restaurant first." },
+        { status: 404 }
+      );
+    }
+
+    if (!restaurant.isApproved) {
+      return NextResponse.json(
+        {
+          error:
+            "Restaurant approval is still pending. Menu items can only be updated after admin approval.",
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const parsed = updateMenuItemSchema.safeParse(body);
 
@@ -108,13 +151,12 @@ export async function PATCH(
 
     const updates = parsed.data;
 
-    // If changing the category, ensure the NEW category also belongs to the same restaurant
     if (updates.category) {
       const newCategory = await MenuCategory.findById(updates.category);
       if (!newCategory) {
         return NextResponse.json({ error: "Provided category not found." }, { status: 404 });
       }
-      if (newCategory.restaurant.toString() !== restaurant!._id.toString()) {
+      if (String(newCategory.restaurant) !== String(restaurant._id)) {
         return NextResponse.json(
           { error: "Forbidden. The new category does not belong to your restaurant." },
           { status: 403 }
@@ -122,15 +164,16 @@ export async function PATCH(
       }
     }
 
-    // Apply updates using findByIdAndUpdate to efficiently bypass full document hydration overhead
-    const updatedItem = await MenuItem.findByIdAndUpdate(
-      menuItemId,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
+    menuItem.set(updates);
+    await menuItem.save();
+    await menuItem.populate({
+      path: "category",
+      model: MenuCategory,
+      select: "_id name isActive",
+    });
 
     return NextResponse.json(
-      { message: "Menu item updated successfully.", menuItem: updatedItem },
+      { message: "Menu item updated successfully.", menuItem },
       { status: 200 }
     );
   } catch (error) {
@@ -138,8 +181,6 @@ export async function PATCH(
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
-
-// ─── DELETE: Hard Delete Menu Item ──────────────────────────────────────────
 
 export async function DELETE(
   req: Request,
@@ -153,10 +194,26 @@ export async function DELETE(
       return NextResponse.json({ error: "Menu item ID is required." }, { status: 400 });
     }
 
-    const { errorResponse } = await verifyProviderAndItem(menuItemId);
-    if (errorResponse) return errorResponse;
+    const verification = await verifyProviderAndItem(menuItemId);
+    if ("errorResponse" in verification) return verification.errorResponse;
 
-    // Perform hard delete as requested
+    if (!("restaurant" in verification) || !verification.restaurant) {
+      return NextResponse.json(
+        { error: "Restaurant not found. Please create a restaurant first." },
+        { status: 404 }
+      );
+    }
+
+    if (!verification.restaurant.isApproved) {
+      return NextResponse.json(
+        {
+          error:
+            "Restaurant approval is still pending. Menu items can only be deleted after admin approval.",
+        },
+        { status: 403 }
+      );
+    }
+
     await MenuItem.findByIdAndDelete(menuItemId);
 
     return NextResponse.json(

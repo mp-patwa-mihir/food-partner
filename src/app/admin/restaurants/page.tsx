@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Table,
   TableBody,
@@ -12,7 +12,6 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -26,7 +25,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -37,7 +35,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, MoreHorizontal, CheckCircle2, Search, Store } from "lucide-react";
+import { toast } from "sonner";
+import { Loader2, MoreHorizontal, CheckCircle2, RefreshCcw, Search, Store } from "lucide-react";
+import type { ApiResponse } from "@/types";
+import { getErrorMessage } from "@/lib/utils";
 
 type Restaurant = {
   _id: string;
@@ -50,8 +51,14 @@ type Restaurant = {
     name: string;
     email: string;
     phone?: string;
+    isApproved?: boolean;
   };
   createdAt: string;
+};
+
+type SyncApprovalsData = {
+  approvedRestaurants: number;
+  providersSynced: number;
 };
 
 export default function AdminRestaurantsPage() {
@@ -67,8 +74,9 @@ export default function AdminRestaurantsPage() {
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [isSyncingApprovals, setIsSyncingApprovals] = useState(false);
 
-  const fetchRestaurants = async () => {
+  const fetchRestaurants = useCallback(async () => {
     setIsLoading(true);
     try {
       const url = filterStatus === "all" 
@@ -80,16 +88,17 @@ export default function AdminRestaurantsPage() {
       
       const data = await response.json();
       setRestaurants(data.restaurants || []);
-    } catch (err: any) {
-      setError(err.message);
+      setError("");
+    } catch (error) {
+      setError(getErrorMessage(error, "Failed to fetch restaurants"));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [filterStatus]);
 
   useEffect(() => {
     fetchRestaurants();
-  }, [filterStatus]);
+  }, [fetchRestaurants]);
 
   const handleApprove = async () => {
     if (!selectedRestaurant) return;
@@ -99,20 +108,63 @@ export default function AdminRestaurantsPage() {
         method: "PATCH",
       });
 
-      if (!response.ok) throw new Error("Failed to approve restaurant");
+      const data = await response.json() as ApiResponse<{
+        restaurant: { _id: string; isApproved: boolean };
+        owner: { _id: string; isApproved: boolean };
+      }>;
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to approve restaurant");
+      }
 
       // Update local state
       setRestaurants(prev => 
-        prev.map(r => r._id === selectedRestaurant._id ? { ...r, isApproved: true } : r)
+        prev.map((r) =>
+          r._id === selectedRestaurant._id
+            ? {
+                ...r,
+                isApproved: true,
+                owner: {
+                  ...r.owner,
+                  isApproved: true,
+                },
+              }
+            : r
+        )
       );
+
+      toast.success(data.message);
       
       setIsApproveDialogOpen(false);
-    } catch (err: any) {
-      console.error(err);
-      alert(err.message);
+    } catch (error) {
+      console.error(error);
+      toast.error(getErrorMessage(error, "Failed to approve restaurant"));
     } finally {
       setIsApproving(false);
       setSelectedRestaurant(null);
+    }
+  };
+
+  const handleSyncLegacyApprovals = async () => {
+    try {
+      setIsSyncingApprovals(true);
+      const response = await fetch("/api/admin/maintenance/provider-approvals", {
+        method: "POST",
+      });
+      const data = await response.json() as ApiResponse<SyncApprovalsData>;
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to sync approvals");
+      }
+
+      toast.success(
+        `${data.data.providersSynced} provider account(s) synced across ${data.data.approvedRestaurants} approved restaurant(s).`
+      );
+      await fetchRestaurants();
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to sync approvals"));
+    } finally {
+      setIsSyncingApprovals(false);
     }
   };
 
@@ -132,6 +184,18 @@ export default function AdminRestaurantsPage() {
             Manage and approve provider restaurant applications.
           </p>
         </div>
+        <Button
+          variant="outline"
+          onClick={handleSyncLegacyApprovals}
+          disabled={isSyncingApprovals}
+        >
+          {isSyncingApprovals ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCcw className="mr-2 h-4 w-4" />
+          )}
+          Sync Legacy Approvals
+        </Button>
       </div>
 
       <Card>
@@ -151,7 +215,7 @@ export default function AdminRestaurantsPage() {
               <select 
                 className="flex h-10 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as any)}
+                onChange={(event) => setFilterStatus(event.target.value as "all" | "pending" | "approved")}
               >
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
@@ -204,15 +268,26 @@ export default function AdminRestaurantsPage() {
                       <TableCell>
                         <div className="font-medium">{restaurant.owner?.name || "Unknown"}</div>
                         <div className="text-xs text-muted-foreground">{restaurant.owner?.email}</div>
+                        <div className="mt-2">
+                          {restaurant.owner?.isApproved ? (
+                            <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+                              Provider Active
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
+                              Provider Pending
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {restaurant.isApproved ? (
                           <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-100">
-                            Approved
+                            Restaurant Approved
                           </Badge>
                         ) : (
                           <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-100">
-                            Pending Review
+                            Restaurant Pending
                           </Badge>
                         )}
                       </TableCell>

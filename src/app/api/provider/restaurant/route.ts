@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
-import { z, ZodError } from "zod";
-import { connectDB } from "@/lib/db";
+import { z } from "zod";
 import Restaurant from "@/models/Restaurant";
-import { UserRole } from "@/constants/roles";
-import { headers } from "next/headers";
+import { getProviderContext } from "@/lib/provider-auth";
 
-const createRestaurantSchema = z.object({
+const restaurantSchema = z.object({
   name: z.string().min(2, "Restaurant name must be at least 2 characters"),
   description: z.string().optional(),
   address: z.string().optional(),
@@ -16,39 +14,26 @@ const createRestaurantSchema = z.object({
   coverImage: z.string().url().optional().or(z.literal("")),
 });
 
+const updateRestaurantSchema = restaurantSchema
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: "At least one field is required to update the restaurant.",
+  });
+
 export async function POST(req: Request) {
   try {
-    const requestHeaders = await headers();
-    const userId = requestHeaders.get("x-user-id");
-    const userRole = requestHeaders.get("x-user-role");
+    const context = await getProviderContext({ allowMissingRestaurant: true });
+    if ("errorResponse" in context) return context.errorResponse;
 
-    // 1. Verify User is Authenticated and is a PROVIDER
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (userRole !== UserRole.PROVIDER) {
-      return NextResponse.json(
-        { error: "Forbidden. Only registered providers can create restaurants." },
-        { status: 403 }
-      );
-    }
-
-    await connectDB();
-
-    // 2. Check if the provider already has a restaurant
-    // Assuming 1 restaurant per provider for MVP to keep logic simple.
-    const existingRestaurant = await Restaurant.findOne({ owner: userId });
-    if (existingRestaurant) {
+    if (context.restaurant) {
       return NextResponse.json(
         { error: "You already have a registered restaurant." },
-        { status: 409 } // Conflict
+        { status: 409 }
       );
     }
 
-    // 3. Parse and Validate Request Body
     const body = await req.json();
-    const parsed = createRestaurantSchema.safeParse(body);
+    const parsed = restaurantSchema.safeParse(body);
     
     if (!parsed.success) {
       return NextResponse.json(
@@ -59,12 +44,9 @@ export async function POST(req: Request) {
     
     const validatedData = parsed.data;
 
-    // 4. Create the Restaurant
-    // Note: isApproved defaults to false via the Mongoose schema.
     const newRestaurant = await Restaurant.create({
       ...validatedData,
-      owner: userId,
-      // Ensure these are secure defaults regardless of input
+      owner: context.userId,
       isApproved: false,
       isOpen: true,
       rating: 0,
@@ -89,36 +71,54 @@ export async function POST(req: Request) {
 
 export async function GET() {
   try {
-    const requestHeaders = await headers();
-    const userId = requestHeaders.get("x-user-id");
-    const userRole = requestHeaders.get("x-user-role");
+    const context = await getProviderContext({ allowMissingRestaurant: true });
+    if ("errorResponse" in context) return context.errorResponse;
 
-    // 1. Verify User is Authenticated and is a PROVIDER
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    return NextResponse.json({ restaurant: context.restaurant ?? null }, { status: 200 });
+  } catch (error) {
+    console.error("Error fetching provider restaurant:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}
 
-    if (userRole !== UserRole.PROVIDER) {
+export async function PATCH(req: Request) {
+  try {
+    const context = await getProviderContext();
+    if ("errorResponse" in context) return context.errorResponse;
+    const restaurant = context.restaurant;
+
+    if (!restaurant) {
       return NextResponse.json(
-        { error: "Forbidden. Only registered providers can access this." },
-        { status: 403 }
+        { error: "Restaurant not found. Please create a restaurant first." },
+        { status: 404 }
       );
     }
 
-    await connectDB();
+    const body = await req.json();
+    const parsed = updateRestaurantSchema.safeParse(body);
 
-    // 2. Fetch the specific provider's restaurant
-    const restaurant = await Restaurant.findOne({ owner: userId });
-
-    // 3. If none exists, requirements state to return null
-    if (!restaurant) {
-      return NextResponse.json({ restaurant: null }, { status: 200 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation Error", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
 
-    // 4. Return the secure data
-    return NextResponse.json({ restaurant }, { status: 200 });
+    restaurant.set(parsed.data);
+    await restaurant.save();
+
+    return NextResponse.json(
+      {
+        message: "Restaurant updated successfully.",
+        restaurant,
+      },
+      { status: 200 }
+    );
   } catch (error) {
-    console.error("Error fetching provider restaurant:", error);
+    console.error("Error updating provider restaurant:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

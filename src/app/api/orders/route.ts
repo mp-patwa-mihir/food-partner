@@ -5,6 +5,7 @@ import Cart from "@/models/Cart";
 import Restaurant from "@/models/Restaurant";
 import MenuItem from "@/models/MenuItem";
 import { UserRole } from "@/constants/roles";
+import { placeOrderSchema } from "@/schemas/order.schema";
 import { headers } from "next/headers";
 import mongoose from "mongoose";
 
@@ -16,24 +17,23 @@ export async function POST(req: Request) {
 
     // Verify customer
     if (!userId || userRole !== UserRole.CUSTOMER) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+      return NextResponse.json({ success: false, message: "Unauthorized" }, { status: 403 });
     }
 
     const body = await req.json();
-    const { deliveryAddress } = body;
-
-    // We need a delivery address to place an order
-    if (
-      !deliveryAddress ||
-      !deliveryAddress.street ||
-      !deliveryAddress.city ||
-      !deliveryAddress.pincode
-    ) {
+    const parsed = placeOrderSchema.safeParse(body);
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Complete delivery address is required" },
-        { status: 400 }
+        {
+          success: false,
+          message: "Validation failed",
+          errors: parsed.error.flatten().fieldErrors,
+        },
+        { status: 422 }
       );
     }
+
+    const { deliveryAddress } = parsed.data;
 
     await connectDB();
 
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     // Validate cart not empty
     if (!cart || cart.items.length === 0) {
       return NextResponse.json(
-        { error: "Cart is empty" },
+        { success: false, message: "Cart is empty" },
         { status: 400 }
       );
     }
@@ -52,14 +52,14 @@ export async function POST(req: Request) {
     const restaurant = await Restaurant.findById(cart.restaurant);
     if (!restaurant) {
       return NextResponse.json(
-        { error: "Restaurant no longer exists" },
+        { success: false, message: "Restaurant no longer exists" },
         { status: 404 }
       );
     }
 
     if (!restaurant.isApproved || !restaurant.isOpen) {
       return NextResponse.json(
-        { error: "Restaurant is currently closed or unavailable" },
+        { success: false, message: "Restaurant is currently closed or unavailable" },
         { status: 400 }
       );
     }
@@ -80,7 +80,8 @@ export async function POST(req: Request) {
       if (!liveItem) {
         return NextResponse.json(
           {
-            error: `Item "${cartItem.name}" is no longer available on the menu. Please update your cart.`,
+            success: false,
+            message: `Item "${cartItem.name}" is no longer available on the menu. Please update your cart.`,
           },
           { status: 400 }
         );
@@ -90,7 +91,8 @@ export async function POST(req: Request) {
       if (!liveItem.isAvailable) {
         return NextResponse.json(
           {
-            error: `Item "${cartItem.name}" is currently unavailable. Please remove it from your cart.`,
+            success: false,
+            message: `Item "${cartItem.name}" is currently unavailable. Please remove it from your cart.`,
           },
           { status: 400 }
         );
@@ -150,13 +152,17 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(
-      { message: "Order placed successfully", order: savedOrder },
+      {
+        success: true,
+        message: "Order placed successfully",
+        data: { order: savedOrder },
+      },
       { status: 201 }
     );
   } catch (error: any) {
     console.error("Create Order POST Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { success: false, message: "Internal Server Error" },
       { status: 500 }
     );
   }
