@@ -157,7 +157,7 @@ export default function OrdersPage() {
     switch (status) {
       case "PENDING":
         return "secondary";
-      case "ACCEPTED":
+      case "CONFIRMED":
       case "PREPARING":
       case "OUT_FOR_DELIVERY":
         return "default";
@@ -214,9 +214,12 @@ export default function OrdersPage() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end gap-1">
                       <p className="text-sm text-muted-foreground hidden sm:block">Total</p>
-                      <p className="font-bold text-lg">${order.totalAmount.toFixed(2)}</p>
+                      <p className="font-bold text-lg leading-none">${order.totalAmount.toFixed(2)}</p>
+                      <Badge variant="outline" className="text-[9px] h-4 py-0 bg-green-50 text-green-700 border-green-200">
+                        Paid
+                      </Badge>
                     </div>
                     <motion.div
                       key={order.status} // Re-animate every time status changes
@@ -269,14 +272,23 @@ export default function OrdersPage() {
               </CardContent>
 
               {order.status === "PENDING" && (
-                <CardFooter className="pt-0 justify-end">
+                <CardFooter className="pt-0 justify-end gap-3">
                   <Button
-                    variant="destructive"
+                    variant="outline"
                     size="sm"
-                    onClick={() => handleCancelOrder(order._id)}
+                    onClick={() => router.push(`/orders/${order._id}`)}
                   >
-                    Cancel Order
+                    Track Order
                   </Button>
+                  {order.status === "PENDING" && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleCancelOrder(order._id)}
+                    >
+                      Cancel
+                    </Button>
+                  )}
                 </CardFooter>
               )}
             </Card>

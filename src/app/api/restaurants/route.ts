@@ -23,19 +23,29 @@ export async function GET(request: Request) {
     // 3. Optional filters
     const city = searchParams.get("city");
     if (city) {
-      // Case-insensitive exact match or partial match depending on preference.
-      // Using regex for flexibility in case of varying input cases (e.g. "new york" vs "New York")
       query.city = { $regex: new RegExp(city, "i") };
+    }
+
+    const cuisine = searchParams.get("cuisine");
+    if (cuisine) {
+      query.cuisine = { $in: [new RegExp(cuisine, "i")] };
+    }
+
+    const location = searchParams.get("location");
+    if (location) {
+      query.location = { $regex: new RegExp(location, "i") };
     }
 
     const search = searchParams.get("search");
     if (search) {
-      // Search by restaurant name
-      query.name = { $regex: new RegExp(search, "i") };
+      // Search by restaurant name or cuisine
+      query.$or = [
+        { name: { $regex: new RegExp(search, "i") } },
+        { cuisine: { $in: [new RegExp(search, "i")] } },
+      ];
     }
 
     // 4. Execute query with projection to exclude internal fields
-    // Exclude __v, owner (internal linking), isApproved (implied true), createdAt, updatedAt
     const projection = {
       __v: 0,
       owner: 0,
@@ -46,17 +56,15 @@ export async function GET(request: Request) {
 
     const [restaurants, total] = await Promise.all([
       Restaurant.find(query, projection)
-        .sort({ rating: -1, totalReviews: -1 }) // Sort by highest rated first
+        .sort({ rating: -1, totalReviews: -1 })
         .skip(skip)
         .limit(limit)
-        .lean(), // Convert to plain JS objects for performance
+        .lean(),
       Restaurant.countDocuments(query),
     ]);
 
     // 5. Calculate pagination metadata
     const totalPages = Math.ceil(total / limit);
-    const hasNextPage = page < totalPages;
-    const hasPrevPage = page > 1;
 
     return NextResponse.json(
       {
@@ -66,17 +74,46 @@ export async function GET(request: Request) {
           page,
           limit,
           totalPages,
-          hasNextPage,
-          hasPrevPage,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
         },
       },
       { status: 200 }
     );
   } catch (error) {
     console.error("Error fetching public restaurants:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
+
+export async function POST(request: Request) {
+  try {
+    await connectDB();
+    const body = await request.json();
+
+    const { name, description, location, cuisine, image, city, state, pincode, owner } = body;
+
+    if (!name || !owner) {
+      return NextResponse.json({ error: "Name and owner are required" }, { status: 400 });
+    }
+
+    const newRestaurant = await Restaurant.create({
+      name,
+      description,
+      location,
+      cuisine: Array.isArray(cuisine) ? cuisine : [cuisine],
+      image,
+      city,
+      state,
+      pincode,
+      owner,
+      isApproved: false, // Default to false for manual approval
+    });
+
+    return NextResponse.json({ data: newRestaurant }, { status: 201 });
+  } catch (error: any) {
+    console.error("Error creating restaurant:", error);
+    return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
+  }
+}
+

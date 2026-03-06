@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import Order from "@/models/Order";
-import { UserRole } from "@/constants/roles";
+import User, { UserRole } from "@/models/User";
+import Restaurant from "@/models/Restaurant";
 import { headers } from "next/headers";
 
 export async function GET() {
@@ -17,7 +18,7 @@ export async function GET() {
 
     await connectDB();
 
-    // Aggregate counts based on order statuses
+    // 1. Order Stats
     const stats = await Order.aggregate([
       {
         $group: {
@@ -27,7 +28,6 @@ export async function GET() {
       },
     ]);
 
-    // Format results to 0 defaults
     let pending = 0;
     let preparing = 0;
     let active = 0;
@@ -40,10 +40,30 @@ export async function GET() {
       if (status === "PREPARING") preparing += count;
       
       // Active states
-      if (["PENDING", "ACCEPTED", "PREPARING", "OUT_FOR_DELIVERY"].includes(status)) {
+      if (["PENDING", "CONFIRMED", "PREPARING", "OUT_FOR_DELIVERY"].includes(status)) {
         active += count;
       }
     });
+
+    // 2. Revenue (Assuming total field exists on delivered orders)
+    const revenueStats = await Order.aggregate([
+      { $match: { status: "DELIVERED" } },
+      { $group: { _id: null, totalRevenue: { $sum: "$total" } } }
+    ]);
+    const totalRevenue = revenueStats[0]?.totalRevenue || 0;
+
+    // 3. User & Restaurant Counts
+    const totalUsers = await User.countDocuments({ role: "CUSTOMER" });
+    const totalRestaurants = await Restaurant.countDocuments({ isApproved: true });
+    
+    // 4. Pending Approvals
+    const pendingApprovals = await User.countDocuments({
+      role: { $in: [UserRole.PROVIDER, "DELIVERY_PARTNER"] },
+      isApproved: false
+    });
+
+    // 5. Total Orders
+    const totalOrders = await Order.countDocuments();
 
     return NextResponse.json({
       success: true,
@@ -51,6 +71,11 @@ export async function GET() {
         active,
         pending,
         preparing,
+        totalRevenue,
+        totalUsers,
+        totalRestaurants,
+        pendingApprovals,
+        totalOrders
       },
     });
   } catch (error: any) {

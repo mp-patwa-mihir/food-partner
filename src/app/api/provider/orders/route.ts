@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     if (status) {
       const allowedStatuses = [
         "PENDING",
-        "ACCEPTED",
+        "CONFIRMED",
         "REJECTED",
         "PREPARING",
         "OUT_FOR_DELIVERY",

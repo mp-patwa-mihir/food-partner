@@ -217,7 +217,7 @@ export default function ProviderOrdersPage() {
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case "PENDING": return "secondary";
-      case "ACCEPTED":
+      case "CONFIRMED":
       case "PREPARING":
       case "OUT_FOR_DELIVERY": return "default";
       case "DELIVERED": return "outline";
@@ -303,7 +303,7 @@ export default function ProviderOrdersPage() {
                    <div>
                      <h4 className="font-semibold text-sm mb-3 flex justify-between">
                         Order Items
-                        <span className="text-primary">${order.totalAmount.toFixed(2)}</span>
+                        <span className="text-primary">₹{order.totalAmount.toFixed(2)}</span>
                      </h4>
                      <div className="space-y-2 text-sm max-h-[150px] overflow-y-auto pr-2">
                         {order.items.map((item, idx) => (
@@ -313,7 +313,7 @@ export default function ProviderOrdersPage() {
                               <span className="text-muted-foreground">{item.name}</span>
                            </div>
                            <span className="font-medium">
-                              ${(item.price * item.quantity).toFixed(2)}
+                              ₹{(item.price * item.quantity).toFixed(2)}
                            </span>
                            </div>
                         ))}
@@ -327,11 +327,11 @@ export default function ProviderOrdersPage() {
                 {order.status === "PENDING" && (
                   <>
                     <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive hover:text-white" size="sm" onClick={() => updateOrderStatus(order._id, "REJECTED")} disabled={updatingId === order._id}>Reject Order</Button>
-                    <Button size="sm" onClick={() => updateOrderStatus(order._id, "ACCEPTED")} disabled={updatingId === order._id}>Accept Order</Button>
+                    <Button size="sm" onClick={() => updateOrderStatus(order._id, "CONFIRMED")} disabled={updatingId === order._id}>Confirm Order</Button>
                   </>
                 )}
                 
-                {order.status === "ACCEPTED" && (
+                {order.status === "CONFIRMED" && (
                   <Button size="sm" onClick={() => updateOrderStatus(order._id, "PREPARING")} disabled={updatingId === order._id}>Start Preparing</Button>
                 )}
                 

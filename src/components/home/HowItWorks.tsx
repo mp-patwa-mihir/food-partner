@@ -33,7 +33,7 @@ const steps = [
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="bg-muted/30 py-24 sm:py-32">
+    <section id="how-it-works" className="bg-muted/20 py-24 sm:py-32">
       <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         
         {/* Section Header */}
@@ -59,7 +59,7 @@ export function HowItWorks() {
         >
           {steps.map((step, index) => (
             <motion.div key={step.title} variants={fadeInUp}>
-              <Card className="group relative overflow-hidden border-muted/50 transition-all duration-300 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary/5 bg-background h-full h-full flex flex-col items-center text-center p-6 sm:p-8">
+              <Card className="group relative flex h-full flex-col items-center overflow-hidden rounded-[2rem] border-border/70 bg-background/85 p-6 text-center shadow-sm transition-all duration-300 hover:-translate-y-2 hover:shadow-xl hover:shadow-primary/5 sm:p-8">
                 
                 {/* Step Number Background Ghost */}
                 <div className="absolute -right-4 -top-8 text-9xl font-black text-muted/10 transition-colors duration-300 group-hover:text-primary/5 select-none pointer-events-none">

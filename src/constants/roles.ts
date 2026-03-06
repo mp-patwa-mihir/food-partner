@@ -3,7 +3,8 @@
  * so this file is safe to import in the Edge Runtime (middleware).
  */
 export enum UserRole {
-  CUSTOMER = "CUSTOMER",
-  PROVIDER = "PROVIDER",
-  ADMIN    = "ADMIN",
+  CUSTOMER         = "CUSTOMER",
+  PROVIDER         = "PROVIDER",
+  ADMIN            = "ADMIN",
+  DELIVERY_PARTNER = "DELIVERY_PARTNER",
 }

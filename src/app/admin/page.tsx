@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useSocket } from "@/context/SocketContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, Clock, ChefHat } from "lucide-react";
+import { Activity, Clock, ChefHat, DollarSign, Users, Store, UserCheck } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 
@@ -12,6 +12,11 @@ interface AdminStats {
   active: number;
   pending: number;
   preparing: number;
+  totalRevenue: number;
+  totalUsers: number;
+  totalRestaurants: number;
+  pendingApprovals: number;
+  totalOrders: number;
 }
 
 export default function AdminDashboardPage() {
@@ -114,7 +119,19 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-4">
+        {/* Total Orders Count */}
+        <Card className="shadow-sm border-slate-100 bg-slate-50/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-slate-900">Total Lifetime Orders</CardTitle>
+            <Activity className="h-5 w-5 text-slate-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold text-slate-700">{stats?.totalOrders || 0}</div>
+            <p className="text-xs text-slate-600/80 mt-1">Total volume since inception</p>
+          </CardContent>
+        </Card>
+
         {/* Active Orders Count */}
         <Card className="shadow-sm border-blue-100 bg-blue-50/10">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -148,6 +165,54 @@ export default function AdminDashboardPage() {
           <CardContent>
             <div className="text-4xl font-bold text-purple-700">{stats?.preparing || 0}</div>
             <p className="text-xs text-purple-600/80 mt-1">Meals being actively cooked</p>
+          </CardContent>
+        </Card>
+
+        {/* Total Revenue */}
+        <Card className="shadow-sm border-emerald-100 bg-emerald-50/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-emerald-900">Total Platform Revenue</CardTitle>
+            <DollarSign className="h-5 w-5 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold text-emerald-700">${(stats?.totalRevenue || 0).toFixed(2)}</div>
+            <p className="text-xs text-emerald-600/80 mt-1">From all delivered orders</p>
+          </CardContent>
+        </Card>
+
+        {/* Total Customers */}
+        <Card className="shadow-sm border-indigo-100 bg-indigo-50/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-indigo-900">Registered Customers</CardTitle>
+            <Users className="h-5 w-5 text-indigo-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold text-indigo-700">{stats?.totalUsers || 0}</div>
+            <p className="text-xs text-indigo-600/80 mt-1">Active customer accounts</p>
+          </CardContent>
+        </Card>
+
+        {/* Total Restaurants */}
+        <Card className="shadow-sm border-rose-100 bg-rose-50/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-rose-900">Verified Restaurants</CardTitle>
+            <Store className="h-5 w-5 text-rose-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold text-rose-700">{stats?.totalRestaurants || 0}</div>
+            <p className="text-xs text-rose-600/80 mt-1">Fully approved partners</p>
+          </CardContent>
+        </Card>
+
+        {/* Pending Approvals */}
+        <Card className="shadow-sm border-orange-100 bg-orange-50/10">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-orange-900">Pending Approvals</CardTitle>
+            <UserCheck className="h-5 w-5 text-orange-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold text-orange-700">{stats?.pendingApprovals || 0}</div>
+            <p className="text-xs text-orange-600/80 mt-1">Partners awaiting verification</p>
           </CardContent>
         </Card>
       </div>

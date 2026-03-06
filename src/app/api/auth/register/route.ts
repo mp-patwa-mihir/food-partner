@@ -61,8 +61,9 @@ export async function POST(req: NextRequest) {
       name,
       email,
       password: hashedPassword,
-      role:       UserRole.CUSTOMER, // safe default; role elevation done separately
-      isApproved: false,
+      role:       parsed.data.role || UserRole.CUSTOMER,
+      // Customers don't need admin approval; only PROVIDER and DELIVERY_PARTNER do
+      isApproved: (parsed.data.role || UserRole.CUSTOMER) === UserRole.CUSTOMER ? true : false,
       isBlocked:  false,
     });
   } catch (err) {

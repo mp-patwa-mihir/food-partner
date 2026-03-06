@@ -12,6 +12,10 @@ export interface IRestaurant extends Document {
   city?: string;
   state?: string;
   pincode?: string;
+  cuisine: string[];
+  location: string;
+  image?: string;
+  menuItems: mongoose.Types.ObjectId[];
   isApproved: boolean;
   isOpen: boolean;
   rating: number;
@@ -63,6 +67,24 @@ const RestaurantSchema = new Schema<IRestaurant>(
       type: String,
       trim: true,
     },
+    cuisine: {
+      type: [String],
+      default: [],
+    },
+    location: {
+      type: String,
+      trim: true,
+    },
+    image: {
+      type: String,
+      trim: true,
+    },
+    menuItems: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "MenuItem",
+      },
+    ],
     isApproved: {
       type: Boolean,
       default: false, // Must be explicitly approved by an admin

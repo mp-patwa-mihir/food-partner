@@ -56,9 +56,12 @@ type Category = { _id: string; name: string };
 type MenuItemType = {
   _id: string;
   name: string;
+  description?: string;
   price: number;
+  image?: string;
   isAvailable: boolean;
-  category: string; // The category ID to map back
+  category: string;
+  isVeg?: boolean;
 };
 
 export default function MenuManagementPage() {
@@ -66,11 +69,14 @@ export default function MenuManagementPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [error, setError] = useState("");
-  
+  const [editingItem, setEditingItem] = useState<MenuItemType | null>(null);
   // Security Locks
   const [hasRestaurant, setHasRestaurant] = useState(true);
   const [isApproved, setIsApproved] = useState(false);
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
 
   const form = useForm<MenuItemFormValues>({
     resolver: zodResolver(createMenuItemSchema),
@@ -102,17 +108,17 @@ export default function MenuManagementPage() {
 
       setHasRestaurant(true);
       setIsApproved(restData.restaurant.isApproved);
+      setRestaurantId(restData.restaurant._id);
 
-      // 2. Load Categories & Items from the public unified details route
-      const detailsResponse = await fetch(`/api/restaurants/${restData.restaurant._id}`);
-      if (detailsResponse.ok) {
-        const details = await detailsResponse.json();
+      // 2. Load Categories & Items using the new standardized route
+      const menuResponse = await fetch(`/api/menu/${restData.restaurant._id}`);
+      if (menuResponse.ok) {
+        const data = await menuResponse.json();
         
-        // Flatten the structured grouping back into pure arrays for the UI state
         const fetchedCategories: Category[] = [];
         const fetchedItems: MenuItemType[] = [];
 
-        details.categories.forEach((group: any) => {
+        data.menu.forEach((group: any) => {
           fetchedCategories.push(group.category);
           fetchedItems.push(...group.items);
         });
@@ -144,30 +150,91 @@ export default function MenuManagementPage() {
     setError("");
 
     try {
-      const response = await fetch("/api/provider/menu", {
-        method: "POST",
+      const url = editingItem ? `/api/menu/item/${editingItem._id}` : "/api/menu";
+      const method = editingItem ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-           ...data,
-           // Zod coerce handled string->number.
-           // API uses false for non-veg if explicitly set, defaulting isVeg boolean natively via shadcn checkbox ideally, but select works too.
-        }),
+        body: JSON.stringify(data),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Failed to create menu item.");
+        throw new Error(result.error || `Failed to ${editingItem ? 'update' : 'create'} menu item.`);
       }
 
-      // Add to table
-      setItems((prev) => [...prev, result.menuItem]);
-      form.reset();
+      if (editingItem) {
+        setItems((prev) => prev.map(item => item._id === editingItem._id ? result.menuItem : item));
+        setEditingItem(null);
+      } else {
+        setItems((prev) => [...prev, result.menuItem]);
+      }
+      form.reset({
+        name: "",
+        description: "",
+        price: 0,
+        image: "",
+        category: "",
+        isVeg: true,
+      });
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleToggleAvailability(itemId: string, currentStatus: boolean) {
+    try {
+      setTogglingId(itemId);
+      const res = await fetch(`/api/menu/item/${itemId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isAvailable: !currentStatus }),
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+      
+      setItems(prev => prev.map(item => 
+        item._id === itemId ? { ...item, isAvailable: !currentStatus } : item
+      ));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  async function handleDelete(itemId: string) {
+    if (!confirm("Are you sure you want to delete this menu item?")) return;
+    
+    try {
+      setDeletingId(itemId);
+      const res = await fetch(`/api/menu/item/${itemId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete item");
+      
+      setItems(prev => prev.filter(item => item._id !== itemId));
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  function handleEdit(item: MenuItemType) {
+    setEditingItem(item);
+    form.reset({
+      name: item.name,
+      description: item.description || "",
+      price: item.price,
+      image: item.image || "",
+      category: item.category,
+      isVeg: item.isVeg ?? true,
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   if (isLoading) {
@@ -193,11 +260,16 @@ export default function MenuManagementPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="max-w-6xl mx-auto space-y-6 px-4 py-8">
+      <div className="flex items-center justify-between mb-8">
         <div className="flex items-center space-x-3">
-          <UtensilsCrossed className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold tracking-tight">Menu Items</h1>
+          <div className="bg-primary/10 p-2 rounded-xl">
+            <UtensilsCrossed className="h-8 w-8 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Menu Items</h1>
+            <p className="text-muted-foreground">Manage your restaurant catalog and availability.</p>
+          </div>
         </div>
       </div>
 
@@ -224,9 +296,9 @@ export default function MenuManagementPage() {
         <div className="lg:col-span-1 space-y-6">
           <Card className={!isApproved ? "opacity-60 pointer-events-none" : ""}>
             <CardHeader>
-              <CardTitle>Add New Item</CardTitle>
+              <CardTitle>{editingItem ? 'Edit Menu Item' : 'Add New Item'}</CardTitle>
               <CardDescription>
-                Fill out the details to add a new dish to your menu.
+                {editingItem ? 'Update the details of your dish.' : 'Fill out the details to add a new dish to your menu.'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -261,7 +333,7 @@ export default function MenuManagementPage() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Category *</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select a category" />
@@ -285,7 +357,7 @@ export default function MenuManagementPage() {
                       name="price"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Price Prefix (₹) *</FormLabel>
+                          <FormLabel>Price (₹) *</FormLabel>
                           <FormControl>
                             <div className="relative">
                               <IndianRupee className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -335,78 +407,122 @@ export default function MenuManagementPage() {
                       )}
                     />
 
-                    <Button type="submit" className="w-full" disabled={isSubmitting || !isApproved}>
-                      {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                      Add Menu Item
-                    </Button>
-                  </form>
-                </Form>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                       <div className="flex gap-2">
+                         {editingItem && (
+                           <Button 
+                             type="button" 
+                             variant="outline" 
+                             className="flex-1"
+                             onClick={() => {
+                               setEditingItem(null);
+                               form.reset({
+                                 name: "",
+                                 description: "",
+                                 price: 0,
+                                 image: "",
+                                 category: "",
+                                 isVeg: true,
+                               });
+                             }}
+                           >
+                             Cancel
+                           </Button>
+                         )}
+                         <Button type="submit" className="flex-[2]" disabled={isSubmitting || !isApproved}>
+                           {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingItem ? <Plus className="mr-2 h-4 w-4 rotate-45" /> : <Plus className="mr-2 h-4 w-4" />)}
+                           {editingItem ? 'Update Item' : 'Add Menu Item'}
+                         </Button>
+                      </div>
+                    </form>
+                  </Form>
+                )}
+              </CardContent>
+            </Card>
+          </div>
 
-        {/* ITEMS LIST TABLE */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Current Menu ({items.length})</CardTitle>
-              <CardDescription>
-                Overview of all dishes actively published on your restaurant profile.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {items.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground border rounded-lg border-dashed">
-                  No menu items found. {isApproved ? "Start by adding one on the left!" : "Await admin approval to begin."}
-                </div>
-              ) : (
-                <div className="rounded-md border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Dish</TableHead>
-                        <TableHead>Category</TableHead>
-                        <TableHead>Price</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.map((item) => {
-                        const catName = categories.find(c => c._id === item.category)?.name || "Unknown";
-                        
-                        return (
-                          <TableRow key={item._id}>
-                            <TableCell className="font-medium">{item.name}</TableCell>
-                            <TableCell className="text-muted-foreground">{catName}</TableCell>
-                            <TableCell>₹{item.price}</TableCell>
-                            <TableCell>
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                  item.isAvailable
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-red-100 text-red-800"
-                                }`}
-                              >
-                                {item.isAvailable ? "In Stock" : "Sold Out"}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-right">
-                               <Button variant="outline" size="sm" className="h-8 text-xs" disabled>
-                                 Manage
-                               </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+          {/* ITEMS LIST */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Current Menu ({items.length})</h2>
+            </div>
+            
+            {items.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <div className="bg-muted p-4 rounded-full mb-4">
+                    <UtensilsCrossed className="h-10 w-10 opacity-20" />
+                  </div>
+                  <p>No menu items found.</p>
+                  <p className="text-sm">{isApproved ? "Start by adding one on the left!" : "Await admin approval to begin."}</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {items.map((item) => {
+                  const catName = categories.find(c => c._id === item.category)?.name || "Unknown";
+                  
+                  return (
+                    <Card key={item._id} className={`overflow-hidden transition-all hover:shadow-md ${!item.isAvailable ? 'opacity-75 grayscale-[0.2]' : ''}`}>
+                      <div className="flex p-4 gap-4 h-full">
+                        {item.image && (
+                           <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-muted relative">
+                              <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                           </div>
+                        )}
+                        {!item.image && (
+                          <div className="w-20 h-20 rounded-lg bg-primary/5 flex items-center justify-center flex-shrink-0">
+                             <UtensilsCrossed className="h-8 w-8 text-primary/20" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                               <h3 className="font-bold text-lg truncate">{item.name}</h3>
+                               <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider flex-shrink-0 ${item.isAvailable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                 {item.isAvailable ? "In Stock" : "Sold Out"}
+                               </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-tight mb-1">{catName}</p>
+                            <p className="text-sm font-bold text-primary">₹{item.price}</p>
+                          </div>
+                          
+                          <div className="mt-4 flex gap-2">
+                             <Button 
+                               variant="outline"
+                               size="sm" 
+                               className="h-8 text-xs flex-1" 
+                               onClick={() => handleToggleAvailability(item._id, item.isAvailable)}
+                               disabled={togglingId === item._id || deletingId === item._id}
+                             >
+                               {togglingId === item._id ? <Loader2 className="h-3 w-3 animate-spin" /> : (item.isAvailable ? "Disable" : "Enable")}
+                             </Button>
+                             <Button 
+                               variant="outline"
+                               size="sm" 
+                               className="h-8 text-xs flex-1" 
+                               onClick={() => handleEdit(item)}
+                               disabled={deletingId === item._id || togglingId === item._id}
+                             >
+                                Edit
+                             </Button>
+                             <Button 
+                               variant="destructive" 
+                               size="sm" 
+                               className="h-8 text-xs w-8 p-0" 
+                               onClick={() => handleDelete(item._id)}
+                               disabled={deletingId === item._id || togglingId === item._id}
+                             >
+                               {deletingId === item._id ? <Loader2 className="h-3 w-3 animate-spin" /> : "×"}
+                             </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
       </div>
     </div>
   );

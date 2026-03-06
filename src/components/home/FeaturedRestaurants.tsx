@@ -115,7 +115,7 @@ export function FeaturedRestaurants() {
           {MOCK_RESTAURANTS.map((restaurant) => (
             <motion.div key={restaurant.id} variants={fadeInUp}>
               <Link href={`/restaurants/${restaurant.id}`} className="block h-full cursor-pointer">
-                <Card className="h-full overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group border-muted/60">
+                <Card className="group h-full overflow-hidden rounded-[2rem] border-border/70 bg-background/85 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
                   
                   {/* Image Placeholder area */}
                   <div className="relative h-48 w-full overflow-hidden bg-muted">

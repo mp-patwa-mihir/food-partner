@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 
 export function CtaSection() {
   return (
-    <section className="relative overflow-hidden bg-primary py-24 sm:py-32">
+    <section className="relative overflow-hidden py-24 sm:py-32">
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(234,88,12,1),rgba(249,115,22,0.92),rgba(245,158,11,0.88))]" />
       {/* Decorative background pattern */}
       <div className="absolute inset-0 opacity-10">
         <svg
@@ -26,13 +27,13 @@ export function CtaSection() {
         </svg>
       </div>
 
-      <div className="container relative z-10 mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+      <div className="container relative z-10 mx-auto max-w-5xl px-4 text-center sm:px-6 lg:px-8">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-100px" }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          className="flex flex-col items-center justify-center"
+          className="flex flex-col items-center justify-center rounded-[2.5rem] border border-white/20 bg-white/8 px-6 py-12 backdrop-blur-sm sm:px-10"
         >
           <h2 className="text-4xl font-extrabold tracking-tight text-primary-foreground sm:text-5xl mb-6">
             Ready to grow your food business?
