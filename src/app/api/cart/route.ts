@@ -56,33 +56,3 @@ export async function GET(req: Request) {
     );
   }
 }
-
-export async function DELETE(req: Request) {
-  try {
-    const headersList = await headers();
-    const userId = headersList.get("x-user-id");
-    const userRole = headersList.get("x-user-role");
-
-    if (!userId || userRole !== UserRole.CUSTOMER) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    await connectDB();
-
-    const cart = await Cart.findOne({ user: userId });
-    if (!cart) {
-      // Nothing to clear — return success anyway
-      return NextResponse.json({ message: "Cart is already empty" }, { status: 200 });
-    }
-
-    await Cart.findByIdAndDelete(cart._id);
-
-    return NextResponse.json({ message: "Cart cleared successfully" }, { status: 200 });
-  } catch (error: any) {
-    console.error("Cart DELETE Error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
-    );
-  }
-}

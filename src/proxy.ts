@@ -24,13 +24,12 @@ async function verifyJWT(token: string) {
 
 // ─── Route Config ─────────────────────────────────────────────────────────────
 
-const PROTECTED_PREFIXES = ["/admin", "/provider", "/dashboard", "/delivery"];
+const PROTECTED_PREFIXES = ["/admin", "/provider", "/dashboard"];
 
 const ROLE_MAP: Record<string, UserRole[]> = {
   "/admin":    [UserRole.ADMIN],
   "/provider": [UserRole.PROVIDER],
   "/dashboard":[UserRole.CUSTOMER],
-  "/delivery": [UserRole.DELIVERY_PARTNER],
 };
 
 const PUBLIC_PREFIXES = [

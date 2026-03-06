@@ -167,31 +167,33 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const clearCart = async () => {
     if (!cart) return;
     try {
-      // Single bulk DELETE is much faster than sequential item removes
-      const res = await fetch("/api/cart", { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to clear cart");
+      // API doesn't have an explicit clear map right now. 
+      // We can use the update route to set quantities to 0 sequentially or rely on delete.
+      // Easiest is to simulate emptying the cart because updating the only item to 0 deletes the cart in DB.
+      // So doing it sequentially.
+      
+      for (const item of cart.items) {
+          await fetch(`/api/cart/remove/${item.menuItem}`, { method: "DELETE" });
       }
+      
       setCart(null);
-    } catch (error: any) {
-      console.error("clearCart error:", error);
-      toast.error(error.message || "Failed to clear cart");
+    } catch (error) {
+      console.error(error);
     }
   };
 
   const confirmSwitchRestaurant = async () => {
     if (!pendingItem) return;
-    const itemToAdd = pendingItem;
     try {
       await clearCart();
-      await addItem(itemToAdd.menuItemId, itemToAdd.quantity, itemToAdd.restaurantId);
+      
+      const success = await addItem(pendingItem.menuItemId, pendingItem.quantity, pendingItem.restaurantId);
+      if (success) {
+        setWarningModalOpen(false);
+        setPendingItem(null);
+      }
     } catch (error) {
-      toast.error("Failed to switch restaurant. Please try again.");
-    } finally {
-      // Always close the modal and reset pending item, regardless of success or failure
-      setWarningModalOpen(false);
-      setPendingItem(null);
+      toast.error("Failed to switch restaurant");
     }
   };
 

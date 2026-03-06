@@ -6,8 +6,8 @@ import { UserRole } from "@/constants/roles";
 import { headers } from "next/headers";
 
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ["CONFIRMED", "REJECTED"],
-  CONFIRMED: ["PREPARING"],
+  PENDING: ["ACCEPTED", "REJECTED"],
+  ACCEPTED: ["PREPARING"],
   PREPARING: ["OUT_FOR_DELIVERY"],
   OUT_FOR_DELIVERY: ["DELIVERED"],
   REJECTED: [], // Terminal state

@@ -17,32 +17,13 @@ interface AuthContextValue {
   user:     AuthUser | null;
   token:    string | null;
   isLoading: boolean;
-  login:    (credentials: LoginInput, redirectTo?: string | null) => Promise<{ success: boolean; message: string }>;
+  login:    (credentials: LoginInput) => Promise<{ success: boolean; message: string }>;
   logout:   () => Promise<void>;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-function getDefaultRedirectForRole(role: string) {
-  const roleRedirect: Record<string, string> = {
-    ADMIN: "/admin",
-    PROVIDER: "/provider",
-    CUSTOMER: "/dashboard",
-    DELIVERY_PARTNER: "/delivery",
-  };
-
-  return roleRedirect[role] ?? "/";
-}
-
-function getSafeRedirectPath(redirectTo?: string | null) {
-  if (!redirectTo || !redirectTo.startsWith("/") || redirectTo.startsWith("//")) {
-    return null;
-  }
-
-  return redirectTo;
-}
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
@@ -86,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // ── Login ─────────────────────────────────────────────────────────────────
   const login = useCallback(
-    async (credentials: LoginInput, redirectTo?: string | null): Promise<{ success: boolean; message: string }> => {
+    async (credentials: LoginInput): Promise<{ success: boolean; message: string }> => {
       setIsLoading(true);
       try {
         const res = await fetch("/api/auth/login", {
@@ -101,7 +82,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (json.success && json.data?.user) {
           setUser(json.data.user);
           setToken(json.data.token);
-          router.push(getSafeRedirectPath(redirectTo) ?? getDefaultRedirectForRole(json.data.user.role));
+          // Navigate based on role
+          const roleRedirect: Record<string, string> = {
+            ADMIN:    "/admin",
+            PROVIDER: "/provider",
+            CUSTOMER: "/dashboard",
+          };
+          router.push(roleRedirect[json.data.user.role] ?? "/");
         }
 
         return { success: json.success, message: json.message };

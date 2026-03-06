@@ -73,13 +73,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── 6. Role approval check ─────────────────────────────────────────────
-  // Providers and Delivery Partners must be approved by an admin before they can log in
-  if ((user.role === UserRole.PROVIDER || user.role === UserRole.DELIVERY_PARTNER) && !user.isApproved) {
+  // ── 6. PROVIDER approval check ─────────────────────────────────────────────
+  // Providers must be approved by an admin before they can log in
+  if (user.role === UserRole.PROVIDER && !user.isApproved) {
     return NextResponse.json(
       {
         success: false,
-        message: "Your account is pending admin approval.",
+        message: "Your provider account is pending admin approval.",
       },
       { status: 403 }
     );

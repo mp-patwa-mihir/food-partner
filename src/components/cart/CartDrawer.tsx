@@ -20,8 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ShoppingCart, ArrowRight } from "lucide-react";
-import { CartItem } from "./CartItem";
+import { ShoppingCart, Minus, Plus, Trash2, ArrowRight } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -113,7 +112,48 @@ export function CartDrawer() {
                   </div>
                   <div className="flex flex-col gap-6">
                     {cart.items.map((item) => (
-                      <CartItem key={item.menuItem} item={item} />
+                      <div key={item.menuItem} className="flex gap-4">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-sm">{item.name}</h4>
+                          <p className="text-muted-foreground text-sm mt-1">
+                            ${item.price.toFixed(2)}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <p className="font-semibold">
+                            ${(item.price * item.quantity).toFixed(2)}
+                          </p>
+                          <div className="flex items-center gap-2 rounded-md border p-1">
+                            <button
+                              type="button"
+                              className="p-1 hover:bg-muted rounded text-muted-foreground disabled:opacity-50"
+                              onClick={() => {
+                                if (item.quantity === 1) {
+                                  removeItem(item.menuItem);
+                                } else {
+                                  updateQuantity(item.menuItem, item.quantity - 1);
+                                }
+                              }}
+                            >
+                              {item.quantity === 1 ? (
+                                <Trash2 className="h-4 w-4" />
+                              ) : (
+                                <Minus className="h-4 w-4" />
+                              )}
+                            </button>
+                            <span className="w-4 text-center text-sm font-medium">
+                              {item.quantity}
+                            </span>
+                            <button
+                              type="button"
+                              className="p-1 hover:bg-muted rounded text-muted-foreground"
+                              onClick={() => updateQuantity(item.menuItem, item.quantity + 1)}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     ))}
                   </div>
 

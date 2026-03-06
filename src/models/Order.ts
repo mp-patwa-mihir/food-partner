@@ -2,15 +2,12 @@ import mongoose, { Document, Model, Schema } from "mongoose";
 
 export type OrderStatus =
   | "PENDING"
-  | "CONFIRMED"
+  | "ACCEPTED"
   | "REJECTED"
   | "PREPARING"
   | "OUT_FOR_DELIVERY"
   | "DELIVERED"
   | "CANCELLED";
-
-export type PaymentStatus = "PENDING" | "COMPLETED" | "FAILED";
-export type PaymentMethod = "COD" | "ONLINE";
 
 export interface IOrderItem {
   menuItemId: mongoose.Types.ObjectId;
@@ -30,9 +27,6 @@ export interface IOrder extends Document {
     city: string;
     pincode: string;
   };
-  paymentStatus: PaymentStatus;
-  paymentMethod: PaymentMethod;
-  deliveryPartnerId?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,7 +51,7 @@ const OrderSchema = new Schema<IOrder>(
       type: String,
       enum: [
         "PENDING",
-        "CONFIRMED",
+        "ACCEPTED",
         "REJECTED",
         "PREPARING",
         "OUT_FOR_DELIVERY",
@@ -66,23 +60,11 @@ const OrderSchema = new Schema<IOrder>(
       ],
       default: "PENDING",
     },
-    paymentStatus: {
-      type: String,
-      enum: ["PENDING", "COMPLETED", "FAILED"],
-      default: "PENDING",
-    },
-    paymentMethod: {
-      type: String,
-      enum: ["COD", "ONLINE"],
-      required: true,
-      default: "COD",
-    },
     deliveryAddress: {
       street: { type: String, required: true },
       city: { type: String, required: true },
       pincode: { type: String, required: true },
     },
-    deliveryPartnerId: { type: Schema.Types.ObjectId, ref: "User", default: null },
   },
   { timestamps: true }
 );
@@ -92,14 +74,9 @@ OrderSchema.pre("save", function () {
   if (!this.isNew) {
     const modifiedPaths = this.modifiedPaths();
     
-    // If anything other than 'status', 'paymentStatus', 'deliveryPartnerId', or 'updatedAt' is modified, throw an error
+    // If anything other than 'status' (or 'updatedAt') is modified, throw an error
     const illegalModifications = modifiedPaths.filter(
-      (path) =>
-        path !== "status" &&
-        path !== "paymentStatus" &&
-        path !== "paymentMethod" &&
-        path !== "deliveryPartnerId" &&
-        path !== "updatedAt"
+      (path) => path !== "status" && path !== "updatedAt"
     );
 
     if (illegalModifications.length > 0) {
@@ -117,7 +94,7 @@ const immutableUpdateHook = function (this: any, next: (err?: mongoose.CallbackE
   const update = this.getUpdate();
   if (!update) return next();
 
-  const allowedUpdates = ["status", "paymentStatus", "paymentMethod", "deliveryPartnerId", "updatedAt"];
+  const allowedUpdates = ["status", "updatedAt"];
   const updateKeys = Object.keys(update.$set || {}).concat(Object.keys(update));
 
   // Remove MongoDB operators like $set from our check

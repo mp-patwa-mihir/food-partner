@@ -8,37 +8,6 @@ import { UserRole } from "@/constants/roles";
 import { headers } from "next/headers";
 import mongoose from "mongoose";
 
-export async function GET(req: Request) {
-  try {
-    const headersList = await headers();
-    const userId = headersList.get("x-user-id");
-    const userRole = headersList.get("x-user-role");
-
-    if (!userId || userRole !== UserRole.CUSTOMER) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
-
-    await connectDB();
-
-    // Fetch user's orders, sorted by newest first
-    const orders = await Order.find({ user: userId })
-      .populate("restaurant", "name address coverImage logo")
-      .populate("deliveryPartnerId", "name phone")
-      .sort({ createdAt: -1 });
-
-    return NextResponse.json(
-      { success: true, orders },
-      { status: 200 }
-    );
-  } catch (error: any) {
-    console.error("Fetch Orders GET Error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
-    );
-  }
-}
-
 export async function POST(req: Request) {
   try {
     const headersList = await headers();
@@ -51,7 +20,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { deliveryAddress, paymentMethod, deliveryFee, taxRate } = body;
+    const { deliveryAddress } = body;
 
     // We need a delivery address to place an order
     if (
@@ -64,13 +33,6 @@ export async function POST(req: Request) {
         { error: "Complete delivery address is required" },
         { status: 400 }
       );
-    }
-
-    if (!paymentMethod || !["COD", "ONLINE"].includes(paymentMethod)) {
-       return NextResponse.json(
-         { error: "Valid payment method is required" },
-         { status: 400 }
-       );
     }
 
     await connectDB();
@@ -111,10 +73,29 @@ export async function POST(req: Request) {
       menuItems.map((item: any) => [item._id.toString(), item])
     );
 
-    // Calculate final amount including delivery fee and taxes sent from checkout
-    const safeDeliveryFee = typeof deliveryFee === "number" && deliveryFee >= 0 ? deliveryFee : 0;
-    const safeTaxRate = typeof taxRate === "number" && taxRate >= 0 && taxRate <= 1 ? taxRate : 0;
-    const finalTotalAmount = cart.totalAmount + safeDeliveryFee + (cart.totalAmount * safeTaxRate);
+    for (const cartItem of cart.items) {
+      const liveItem = menuItemsMap.get(cartItem.menuItem.toString());
+      
+      // Edge Case: Menu item removed after added to cart
+      if (!liveItem) {
+        return NextResponse.json(
+          {
+            error: `Item "${cartItem.name}" is no longer available on the menu. Please update your cart.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Edge Case: Menu item marked as unavailable
+      if (!liveItem.isAvailable) {
+        return NextResponse.json(
+          {
+            error: `Item "${cartItem.name}" is currently unavailable. Please remove it from your cart.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Create order (snapshot everything)
     const newOrder = new Order({
@@ -126,10 +107,8 @@ export async function POST(req: Request) {
         price: item.price,
         quantity: item.quantity,
       })),
-      totalAmount: finalTotalAmount,
+      totalAmount: cart.totalAmount,
       status: "PENDING",
-      paymentStatus: "PENDING",
-      paymentMethod,
       deliveryAddress: {
         street: deliveryAddress.street,
         city: deliveryAddress.city,
