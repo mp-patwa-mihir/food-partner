@@ -15,7 +15,7 @@ export async function GET(request: Request) {
 
     // 2. Build the query object
     // Mandatory constraints for public viewing:
-    const query: any = {
+    const query: Record<string, any> = {
       isApproved: true,
       isOpen: true,
     };
@@ -80,3 +80,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export { POST } from "../provider/restaurant/route";

@@ -72,6 +72,9 @@ export function PublicFooter() {
                 <Link href="/success-stories" className="transition-colors hover:text-primary">Success Stories</Link>
               </li>
               <li>
+                <Link href="/delivery/register" className="transition-colors hover:text-primary">Deliver with us</Link>
+              </li>
+              <li>
                 <Link href="/api-docs" className="transition-colors hover:text-primary">API Integrations</Link>
               </li>
             </ul>

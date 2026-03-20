@@ -22,8 +22,9 @@ import { UserRole } from "@/constants/roles";
 
 const NAV_LINKS = [
   { name: "Home", href: "/" },
-  { name: "How It Works", href: "/#how-it-works" },
+  { name: "AI Discovery", href: "/recommendations" },
   { name: "Restaurants", href: "/restaurants" },
+  { name: "How It Works", href: "/#how-it-works" },
 ];
 
 export function PublicNavbar() {
@@ -55,7 +56,7 @@ export function PublicNavbar() {
         return "/provider";
       case UserRole.ADMIN:
         return "/admin";
-      case "DELIVERY_PARTNER":
+      case UserRole.DELIVERY_PARTNER:
         return "/delivery";
       default:
         return "/dashboard";

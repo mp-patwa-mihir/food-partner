@@ -12,6 +12,19 @@ export interface IMenuItem extends Document {
   category: mongoose.Types.ObjectId;
   restaurant: mongoose.Types.ObjectId;
   stock: number | null;
+  healthMetrics?: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    healthScore: number; // 1-10
+    tags: string[]; // e.g., ["Low Carb", "High Protein", "Gluten Free"]
+  };
+  dietTags?: string[]; // e.g., ["vegan", "keto", "gluten-free", "vegetarian"]
+  healthTags?: string[]; // e.g., ["low-calorie", "high-protein", "diabetic-friendly"]
+  moodTags?: string[]; // e.g., ["comfort-food", "celebration", "late-night"]
+  weatherTags?: string[]; // e.g., ["rainy-day", "cold-weather", "summer"]
+  cuisine?: string; // e.g., "Italian", "Chinese", "Indian"
   createdAt: Date;
   updatedAt: Date;
 }
@@ -62,6 +75,19 @@ const MenuItemSchema = new Schema<IMenuItem>(
       default: null, // null means unlimited stock
       min: [0, "Stock cannot be negative"],
     },
+    healthMetrics: {
+      calories: { type: Number, default: 0 },
+      protein: { type: Number, default: 0 },
+      carbs: { type: Number, default: 0 },
+      fat: { type: Number, default: 0 },
+      healthScore: { type: Number, default: 5, min: 1, max: 10 },
+      tags: [{ type: String, trim: true }],
+    },
+    dietTags: [{ type: String, trim: true }],
+    healthTags: [{ type: String, trim: true }],
+    moodTags: [{ type: String, trim: true }],
+    weatherTags: [{ type: String, trim: true }],
+    cuisine: { type: String, trim: true },
   },
   {
     timestamps: true, // Automatically manages createdAt and updatedAt

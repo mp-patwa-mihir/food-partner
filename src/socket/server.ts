@@ -111,12 +111,25 @@ export function initSocketServer() {
         } catch (dbErr) {
           console.error(`[Socket] Error fetching restaurant for PROVIDER ${userId}:`, dbErr);
         }
+      } else if (role === UserRole.DELIVERY_PARTNER) {
+        socket.join("delivery:partners");
+        console.log(`[Socket] Joined Room: delivery:partners`);
       } else {
         console.log(`[Socket] Unrecognized role: ${role}. No rooms joined.`);
       }
     } catch (err) {
       console.error("[Socket] Error joining rooms:", err);
     }
+
+    socket.on("joinGroupOrder", (orderId) => {
+      socket.join(`groupOrder:${orderId}`);
+      console.log(`[Socket] Joined Room: groupOrder:${orderId}`);
+    });
+
+    socket.on("leaveGroupOrder", (orderId) => {
+      socket.leave(`groupOrder:${orderId}`);
+      console.log(`[Socket] Left Room: groupOrder:${orderId}`);
+    });
 
     socket.on("disconnect", (reason) => {
       console.log(`[Socket] User disconnected - ID: ${userId}, Reason: ${reason}`);

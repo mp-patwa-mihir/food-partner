@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import User, { UserRole } from "@/models/User";
+import DeliveryPartner from "@/models/DeliveryPartner";
 import { registerSchema } from "@/schemas/auth.schema";
+import crypto from "crypto";
 
 export async function POST(req: NextRequest) {
   // ── 1. Parse & Validate ────────────────────────────────────────────────────
@@ -28,7 +30,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { name, email, password, role } = parsed.data;
+  const { name, email, password, role, phone, vehicleType, licenseNumber } = parsed.data;
 
   // ── 2. Connect to DB ───────────────────────────────────────────────────────
   try {
@@ -58,15 +60,29 @@ export async function POST(req: NextRequest) {
   let user: InstanceType<typeof User>;
   try {
     const isProvider = role === UserRole.PROVIDER;
+    const isDeliveryPartner = role === UserRole.DELIVERY_PARTNER;
 
     user = await User.create({
       name,
       email,
       password: hashedPassword,
       role,
-      isApproved: !isProvider,
+      isApproved: !(isProvider || isDeliveryPartner),
       isBlocked:  false,
     });
+
+    if (isDeliveryPartner) {
+      const partnerId = `DP-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+      await DeliveryPartner.create({
+        user: user._id,
+        partnerId,
+        name,
+        phone,
+        vehicleType,
+        licenseNumber,
+        availability: "OFFLINE",
+      });
+    }
   } catch (err) {
     console.error("[Register] User creation failed:", err);
     return NextResponse.json(
@@ -80,8 +96,8 @@ export async function POST(req: NextRequest) {
     {
       success: true,
       message:
-        role === UserRole.PROVIDER
-          ? "Provider account created. Sign in to complete your restaurant profile. Admin approval is still required before going live."
+        role === UserRole.PROVIDER || role === UserRole.DELIVERY_PARTNER
+          ? `${role === UserRole.PROVIDER ? "Provider" : "Delivery Partner"} account created. Sign in to complete your profile. Admin approval is still required before going live.`
           : "Account created successfully. Please sign in to continue.",
       data: {
         id:         String(user._id),
@@ -89,7 +105,7 @@ export async function POST(req: NextRequest) {
         email:      user.email,
         role:       user.role,
         isApproved: user.isApproved,
-        requiresApproval: role === UserRole.PROVIDER,
+        requiresApproval: role === UserRole.PROVIDER || role === UserRole.DELIVERY_PARTNER,
         createdAt:  user.createdAt.toISOString(),
       },
     },

@@ -9,6 +9,7 @@ import {
   Store,
   LogOut,
   Menu,
+  Bike,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SocketIndicator } from "@/components/shared/SocketIndicator";
@@ -16,6 +17,7 @@ import { SocketIndicator } from "@/components/shared/SocketIndicator";
 const sidebarLinks = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { name: "Restaurants", href: "/admin/restaurants", icon: Store },
+  { name: "Delivery Partners", href: "/admin/delivery-partners", icon: Bike },
 ];
 
 export default function AdminLayout({

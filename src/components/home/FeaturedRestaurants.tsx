@@ -19,7 +19,7 @@ const MOCK_RESTAURANTS = [
     reviews: 1240,
     deliveryTime: "15-25 min",
     deliveryFee: "Free",
-    priceRange: "$$",
+    priceRange: "₹₹",
     imageUrl: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&q=80&w=800",
   },
   {
@@ -29,8 +29,8 @@ const MOCK_RESTAURANTS = [
     rating: 4.6,
     reviews: 890,
     deliveryTime: "30-45 min",
-    deliveryFee: "$2.99",
-    priceRange: "$$$",
+    deliveryFee: "₹40",
+    priceRange: "₹₹₹",
     imageUrl: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?auto=format&fit=crop&q=80&w=800",
   },
   {
@@ -40,8 +40,8 @@ const MOCK_RESTAURANTS = [
     rating: 4.9,
     reviews: 2100,
     deliveryTime: "25-40 min",
-    deliveryFee: "$3.49",
-    priceRange: "$$$",
+    deliveryFee: "₹50",
+    priceRange: "₹₹₹",
     imageUrl: "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&q=80&w=800",
   },
   {
@@ -52,7 +52,7 @@ const MOCK_RESTAURANTS = [
     reviews: 3200,
     deliveryTime: "20-35 min",
     deliveryFee: "Free",
-    priceRange: "$$",
+    priceRange: "₹₹",
     imageUrl: "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?auto=format&fit=crop&q=80&w=800",
   },
   {
@@ -62,8 +62,8 @@ const MOCK_RESTAURANTS = [
     rating: 4.7,
     reviews: 540,
     deliveryTime: "15-30 min",
-    deliveryFee: "$1.49",
-    priceRange: "$",
+    deliveryFee: "₹30",
+    priceRange: "₹",
     imageUrl: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=800",
   },
   {
@@ -73,8 +73,8 @@ const MOCK_RESTAURANTS = [
     rating: 4.4,
     reviews: 1800,
     deliveryTime: "20-30 min",
-    deliveryFee: "$1.99",
-    priceRange: "$",
+    deliveryFee: "₹40",
+    priceRange: "₹",
     imageUrl: "https://images.unsplash.com/photo-1551504734-5ee1c4a1479b?auto=format&fit=crop&q=80&w=800",
   },
 ];

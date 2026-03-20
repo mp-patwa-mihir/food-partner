@@ -42,8 +42,9 @@ export function CartDrawer() {
 
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [address, setAddress] = useState({ street: "", city: "", pincode: "" });
+  const [paymentMethod, setPaymentMethod] = useState<"COD" | "ONLINE">("COD");
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
-
+ 
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!address.street || !address.city || !address.pincode) {
@@ -61,7 +62,7 @@ export function CartDrawer() {
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deliveryAddress: address }),
+        body: JSON.stringify({ deliveryAddress: address, paymentMethod }),
       });
 
       const response = await res.json() as ApiResponse<{ order: CustomerOrder }>;
@@ -207,6 +208,34 @@ export function CartDrawer() {
                               value={address.pincode}
                               onChange={(e) => setAddress({ ...address, pincode: e.target.value })}
                             />
+                          </div>
+                        </div>
+
+                        <div className="mt-6 border-t pt-4">
+                          <Label className="text-sm font-semibold mb-3 block">Payment Method</Label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <Button
+                              type="button"
+                              variant={paymentMethod === "COD" ? "default" : "outline"}
+                              className="w-full justify-start h-12"
+                              onClick={() => setPaymentMethod("COD")}
+                            >
+                              <div className="flex flex-col items-start">
+                                <span className="font-medium">Cash</span>
+                                <span className="text-[10px] opacity-70">On Delivery</span>
+                              </div>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant={paymentMethod === "ONLINE" ? "default" : "outline"}
+                              className="w-full justify-start h-12"
+                              onClick={() => setPaymentMethod("ONLINE")}
+                            >
+                              <div className="flex flex-col items-start">
+                                <span className="font-medium">Online</span>
+                                <span className="text-[10px] opacity-70">Pay Now</span>
+                              </div>
+                            </Button>
                           </div>
                         </div>
                       </form>

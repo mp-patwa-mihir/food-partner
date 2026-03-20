@@ -11,6 +11,7 @@ export const deliveryAddressSchema = z.object({
 
 export const placeOrderSchema = z.object({
   deliveryAddress: deliveryAddressSchema,
+  paymentMethod: z.enum(["COD", "ONLINE"]).optional(),
 });
 
 export const updateOrderStatusSchema = z.object({

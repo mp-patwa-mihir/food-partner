@@ -11,7 +11,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { UserRole } from "@/constants/roles";
 import { formatCurrency, getErrorMessage } from "@/lib/utils";
-import { Loader2, MapPin, ShoppingCart, Star, Clock } from "lucide-react";
+import { Loader2, MapPin, ShoppingCart, Star, Clock, Users } from "lucide-react";
+import { toast } from "sonner";
 
 type MenuItemType = {
   _id: string;
@@ -58,6 +59,7 @@ export default function RestaurantDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [isStartingGroupOrder, setIsStartingGroupOrder] = useState(false);
 
   useEffect(() => {
     async function fetchDetails() {
@@ -99,6 +101,34 @@ export default function RestaurantDetailPage() {
       await addItem(menuItemId, 1, restaurant._id);
     } finally {
       setActiveItemId(null);
+    }
+  };
+
+  const handleStartGroupOrder = async () => {
+    if (!restaurant || !user) {
+      router.push(`/login?callbackUrl=${encodeURIComponent(`/restaurants/${id}`)}`);
+      return;
+    }
+
+    setIsStartingGroupOrder(true);
+    try {
+      const response = await fetch("/api/group-orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ restaurantId: restaurant._id }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Failed to start group order");
+
+      toast.success("Group order started!");
+      router.push(`/group-order/${data.data.inviteCode}`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to start group order"));
+    } finally {
+      setIsStartingGroupOrder(false);
     }
   };
 
@@ -186,6 +216,22 @@ export default function RestaurantDetailPage() {
                     <Badge className="bg-green-500 hover:bg-green-600 text-white border-transparent">Open</Badge>
                   ) : (
                     <Badge variant="secondary">Closed</Badge>
+                  )}
+                  {isCustomer && restaurant.isOpen && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="ml-2 gap-2"
+                      onClick={handleStartGroupOrder}
+                      disabled={isStartingGroupOrder}
+                    >
+                      {isStartingGroupOrder ? (
+                         <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Users className="w-4 h-4" />
+                      )}
+                      Start Group Order
+                    </Button>
                   )}
                 </div>
                 <p className="text-zinc-500 dark:text-zinc-400 text-sm md:text-base mb-4 max-w-2xl line-clamp-2">

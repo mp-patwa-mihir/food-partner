@@ -12,6 +12,9 @@ export interface IUser extends Document {
   role:        UserRole;
   isApproved:  boolean;
   isBlocked:   boolean;
+  dietaryPreferences?: string[];
+  healthGoals?: string[];
+  cuisinePreferences: string[];
   createdAt:   Date;
   updatedAt:   Date;
 }
@@ -57,6 +60,9 @@ const UserSchema = new Schema<IUser>(
       type:    Boolean,
       default: false,
     },
+    healthGoals: [{ type: String, trim: true }],
+    dietaryPreferences: [{ type: String, trim: true }],
+    cuisinePreferences: [{ type: String, trim: true }],
   },
   {
     timestamps: true, // Adds createdAt and updatedAt automatically

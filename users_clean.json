@@ -1,0 +1,20 @@
+[
+  {
+    "role": "CUSTOMER",
+    "email": "mark@gmail.com",
+    "password": "password123",
+    "action": "Reset"
+  },
+  {
+    "role": "PARTNER",
+    "email": "partner@test.com",
+    "password": "password123",
+    "action": "Reset"
+  },
+  {
+    "role": "ADMIN",
+    "email": "admin@foodpartner.com",
+    "password": "password123",
+    "action": "Reset"
+  }
+]

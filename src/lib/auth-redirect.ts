@@ -4,11 +4,13 @@ const DEFAULT_ROLE_REDIRECTS: Record<UserRole, string> = {
   [UserRole.ADMIN]: "/admin",
   [UserRole.PROVIDER]: "/provider/restaurant",
   [UserRole.CUSTOMER]: "/dashboard",
+  [UserRole.DELIVERY_PARTNER]: "/",
 };
 
 const RESTRICTED_PREFIXES: Record<string, UserRole[]> = {
   "/admin": [UserRole.ADMIN],
   "/provider": [UserRole.PROVIDER],
+  "/restaurant-owner": [UserRole.PROVIDER],
   "/dashboard": [UserRole.CUSTOMER],
 };
 

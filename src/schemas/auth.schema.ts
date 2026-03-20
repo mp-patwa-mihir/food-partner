@@ -28,14 +28,29 @@ export const registerSchema = z
       .max(50, "Name must be at most 50 characters")
       .trim(),
     email:           emailField,
-    role:            z.enum([UserRole.CUSTOMER, UserRole.PROVIDER]),
+    role:            z.enum([UserRole.CUSTOMER, UserRole.PROVIDER, UserRole.DELIVERY_PARTNER]),
     password:        passwordField,
     confirmPassword: z.string(),
+    phone:           z.string().optional(),
+    vehicleType:     z.enum(["BIKE", "SCOOTER", "CAR", "CYCLE"]).optional(),
+    licenseNumber:   z.string().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
     path:    ["confirmPassword"],
-  });
+  })
+  .refine(
+    (data) => {
+      if (data.role === UserRole.DELIVERY_PARTNER) {
+        return !!data.phone && !!data.vehicleType && !!data.licenseNumber;
+      }
+      return true;
+    },
+    {
+      message: "Phone, vehicle type, and license number are required for delivery partners",
+      path: ["role"],
+    }
+  );
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 

@@ -9,7 +9,9 @@ import { headers } from "next/headers";
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   PENDING: ["ACCEPTED", "REJECTED"],
   ACCEPTED: ["PREPARING"],
-  PREPARING: ["OUT_FOR_DELIVERY"],
+  PREPARING: ["READY_FOR_PICKUP"],
+  READY_FOR_PICKUP: ["PICKED_UP"],
+  PICKED_UP: ["OUT_FOR_DELIVERY"],
   OUT_FOR_DELIVERY: ["DELIVERED"],
   REJECTED: [], // Terminal state
   DELIVERED: [], // Terminal state
@@ -110,6 +112,14 @@ export async function PATCH(
 
       io.to(`user:${order.user.toString()}`).emit("order_status_update", payload);
       io.to("admin:global").emit("admin_order_update", payload);
+
+      if (order.status === "READY_FOR_PICKUP") {
+        io.to("delivery:partners").emit("new_delivery_available", {
+          orderId: order._id.toString(),
+          restaurantName: restaurant.name,
+          address: order.deliveryAddress,
+        });
+      }
     }
 
     return NextResponse.json(

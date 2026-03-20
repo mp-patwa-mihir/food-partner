@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MapPin, Star, Clock } from "lucide-react";
+import { MapPin, Star, Clock, Search } from "lucide-react";
 import Image from "next/image";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 type RestaurantListItem = {
   _id: string;
@@ -25,36 +27,91 @@ export default function RestaurantsListPage() {
   const [restaurants, setRestaurants] = useState<RestaurantListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  
+  // Filtering and Pagination State
+  const [search, setSearch] = useState("");
+  const [city, setCity] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPrevPage: false
+  });
+
+  const fetchCatalog = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const queryParams = new URLSearchParams({
+        limit: "12",
+        page: page.toString(),
+      });
+      if (search) queryParams.set("search", search);
+      if (city) queryParams.set("city", city);
+
+      const response = await fetch(`/api/restaurants?${queryParams.toString()}`);
+      if (!response.ok) throw new Error("Failed to load restaurants.");
+      const data = await response.json();
+      setRestaurants(data.data || []);
+      setPagination(data.pagination);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [page, search, city]);
 
   useEffect(() => {
-    async function fetchCatalog() {
-      try {
-        setIsLoading(true);
-        const response = await fetch("/api/restaurants?limit=20");
-        if (!response.ok) throw new Error("Failed to load restaurants.");
-        const data = await response.json();
-        setRestaurants(data.data || []);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
-    }
+    const timer = setTimeout(() => {
+      fetchCatalog();
+    }, 300); // Debounce search
+    return () => clearTimeout(timer);
+  }, [fetchCatalog]);
 
-    fetchCatalog();
-  }, []);
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 py-12">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-        <div className="flex flex-col md:flex-row justify-between items-end mb-8 gap-4">
-          <div>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-6">
+          <div className="flex-1">
             <h1 className="text-4xl font-extrabold tracking-tight text-zinc-900 dark:text-zinc-50 mb-2">
               Discover Restaurants
             </h1>
-            <p className="text-zinc-500 dark:text-zinc-400 max-w-2xl text-lg">
+            <p className="text-zinc-500 dark:text-zinc-400 max-w-2xl text-lg mb-6">
               Explore the best local eateries, ranging from cozy cafes to fine dining experiences.
             </p>
+            
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-4 w-full max-w-3xl">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                <Input
+                  className="pl-10 h-11 bg-white dark:bg-zinc-900"
+                  placeholder="Search restaurants..."
+                  value={search}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                />
+              </div>
+              <div className="relative w-full sm:w-48">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                <Input
+                  className="pl-10 h-11 bg-white dark:bg-zinc-900"
+                  placeholder="City..."
+                  value={city}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    setCity(e.target.value);
+                    setPage(1);
+                  }}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -91,8 +148,23 @@ export default function RestaurantsListPage() {
                 No restaurants found
               </h3>
               <p className="text-zinc-500">
-                We couldn't find any open restaurants right now. Check back later!
+                {search || city 
+                  ? "We couldn't find any restaurants matching your search criteria." 
+                  : "We couldn't find any open restaurants right now. Check back later!"}
               </p>
+              {(search || city) && (
+                <Button 
+                  variant="outline" 
+                  className="mt-6"
+                  onClick={() => {
+                    setSearch("");
+                    setCity("");
+                    setPage(1);
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
             </div>
           ) : (
             // ACTUAL CARDS
@@ -156,6 +228,31 @@ export default function RestaurantsListPage() {
             ))
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {pagination.totalPages > 1 && (
+          <div className="flex justify-center items-center mt-12 gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!pagination.hasPrevPage || isLoading}
+              onClick={() => handlePageChange(page - 1)}
+            >
+              Previous
+            </Button>
+            <div className="text-sm font-medium">
+              Page {page} of {pagination.totalPages}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!pagination.hasNextPage || isLoading}
+              onClick={() => handlePageChange(page + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

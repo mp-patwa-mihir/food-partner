@@ -116,6 +116,8 @@ export async function POST(req: Request) {
         city: deliveryAddress.city,
         pincode: deliveryAddress.pincode,
       },
+      paymentMethod: parsed.data.paymentMethod || "COD",
+      paymentStatus: "PENDING",
     });
 
     // We can use a MongoDB transaction to ensure the order is created AND the cart is deleted atomically

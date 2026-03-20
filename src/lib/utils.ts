@@ -18,3 +18,12 @@ export function formatCurrency(amount: number) {
 export function getErrorMessage(error: unknown, fallback = "Something went wrong") {
   return error instanceof Error ? error.message : fallback
 }
+
+export function generateInviteCode(length = 7) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
